@@ -1,0 +1,17 @@
+node_modules/
+
+# Build outputs
+dist/
+target/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
+packages/automation/dist/
+
+# Local browser profiles and caches
+packages/automation/test-profile/
+profiles/
+
+# OS/editor noise
+.DS_Store
+.vscode/
+

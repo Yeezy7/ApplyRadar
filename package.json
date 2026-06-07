@@ -1,0 +1,10 @@
+{
+  "name": "applyradar",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @applyradar/desktop dev",
+    "build": "pnpm --filter @applyradar/desktop build",
+    "tauri": "pnpm --filter @applyradar/desktop tauri",
+    "build:sidecar": "pnpm --filter @applyradar/automation build"
+  }
+}

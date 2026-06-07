@@ -1,0 +1,19 @@
+import { invoke } from "@tauri-apps/api/core";
+import type { ApplicationEvent } from "@applyradar/shared";
+
+export interface CreateEventInput {
+  application_id: string;
+  event_type: string;
+  title: string;
+  content?: string;
+  old_status?: string;
+  new_status?: string;
+}
+
+export async function createEvent(input: CreateEventInput): Promise<ApplicationEvent> {
+  return invoke("create_event", { input });
+}
+
+export async function listEventsByApplication(applicationId: string): Promise<ApplicationEvent[]> {
+  return invoke("list_events_by_application", { applicationId });
+}

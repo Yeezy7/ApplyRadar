@@ -1,0 +1,340 @@
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Plus, Search, Trash2, Edit2, ExternalLink, Filter, BriefcaseBusiness, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import type { Application, ApplicationStatus } from "@applyradar/shared";
+import { STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, ALL_STATUSES } from "@applyradar/shared";
+import { applicationService } from "../services";
+import { confirmDelete } from "../services/dialogService";
+import ApplicationForm from "../components/ApplicationForm";
+
+type SortField = "company_name" | "job_title" | "status" | "priority" | "applied_at" | "updated_at";
+type SortDirection = "asc" | "desc";
+
+interface Props {
+  onSelectApp?: (id: string) => void;
+}
+
+export default function ApplicationsPage({ onSelectApp }: Props) {
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [showForm, setShowForm] = useState(false);
+  const [editingApp, setEditingApp] = useState<Application | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sortField, setSortField] = useState<SortField>("updated_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const loadApplications = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await applicationService.listApplications(
+        search || undefined,
+        statusFilter || undefined
+      );
+      setApplications(data);
+    } catch (e) {
+      console.error("Failed to load applications:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    loadApplications();
+  }, [loadApplications]);
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const ok = await confirmDelete("确定要删除这条记录吗？");
+    if (!ok) return;
+    try {
+      await applicationService.deleteApplication(id);
+      await loadApplications();
+    } catch (e) {
+      console.error("Failed to delete:", e);
+    }
+  };
+
+  const handleEdit = (e: React.MouseEvent, app: Application) => {
+    e.stopPropagation();
+    setEditingApp(app);
+    setShowForm(true);
+  };
+
+  const handleFormClose = () => {
+    setShowForm(false);
+    setEditingApp(null);
+    loadApplications();
+  };
+
+  const getDaysWaiting = (app: Application) => {
+    if (!app.applied_at) return null;
+    const days = Math.floor(
+      (Date.now() - new Date(app.applied_at).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return days;
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const sortedApplications = useMemo(() => {
+    const sorted = [...applications];
+    sorted.sort((a, b) => {
+      let aVal: string | number = "";
+      let bVal: string | number = "";
+
+      switch (sortField) {
+        case "company_name":
+          aVal = a.company_name.toLowerCase();
+          bVal = b.company_name.toLowerCase();
+          break;
+        case "job_title":
+          aVal = a.job_title.toLowerCase();
+          bVal = b.job_title.toLowerCase();
+          break;
+        case "status":
+          aVal = a.status;
+          bVal = b.status;
+          break;
+        case "priority":
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          aVal = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 1;
+          bVal = priorityOrder[b.priority as keyof typeof priorityOrder] ?? 1;
+          break;
+        case "applied_at":
+          aVal = a.applied_at || "";
+          bVal = b.applied_at || "";
+          break;
+        case "updated_at":
+          aVal = a.updated_at;
+          bVal = b.updated_at;
+          break;
+      }
+
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [applications, sortField, sortDirection]);
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-gray-300" />;
+    return sortDirection === "asc"
+      ? <ArrowUp className="w-3 h-3 text-stone-600" />
+      : <ArrowDown className="w-3 h-3 text-stone-600" />;
+  };
+
+  return (
+    <div className="p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-gray-900">求职记录</h1>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="搜索公司或岗位..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-64 pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all"
+            />
+          </div>
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="pl-9 pr-7 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all appearance-none cursor-pointer"
+            >
+              <option value="">全部状态</option>
+              {ALL_STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABELS[s]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm font-medium hover:bg-stone-800 transition-all shadow-sm"
+        >
+          <Plus className="w-4 h-4" />
+          新建记录
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th
+                onClick={() => handleSort("company_name")}
+                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+              >
+                <div className="flex items-center gap-1">公司 <SortIcon field="company_name" /></div>
+              </th>
+              <th
+                onClick={() => handleSort("job_title")}
+                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+              >
+                <div className="flex items-center gap-1">岗位 <SortIcon field="job_title" /></div>
+              </th>
+              <th
+                onClick={() => handleSort("status")}
+                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+              >
+                <div className="flex items-center gap-1">状态 <SortIcon field="status" /></div>
+              </th>
+              <th
+                onClick={() => handleSort("priority")}
+                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+              >
+                <div className="flex items-center gap-1">优先级 <SortIcon field="priority" /></div>
+              </th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">来源</th>
+              <th
+                onClick={() => handleSort("applied_at")}
+                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+              >
+                <div className="flex items-center gap-1">投递日期 <SortIcon field="applied_at" /></div>
+              </th>
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">等待天数</th>
+              <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={8} className="px-5 py-16 text-center">
+                  <div className="inline-block w-6 h-6 border-2 border-stone-200 border-t-stone-600 rounded-full animate-spin" />
+                </td>
+              </tr>
+            ) : sortedApplications.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-5 py-16 text-center">
+                  <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                    <BriefcaseBusiness className="w-6 h-6 text-gray-400" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-500">暂无求职记录</p>
+                  <p className="text-xs text-gray-400 mt-1">点击"新建记录"开始添加</p>
+                </td>
+              </tr>
+            ) : (
+              sortedApplications.map((app) => {
+                const days = getDaysWaiting(app);
+                return (
+                  <tr
+                    key={app.id}
+                    onClick={() => onSelectApp?.(app.id)}
+                    className="border-b border-gray-50 hover:bg-[#F7F4EC] transition-colors cursor-pointer group"
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-stone-100 to-stone-200 flex items-center justify-center text-stone-600 font-bold text-xs flex-shrink-0">
+                          {app.company_name.slice(0, 1)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{app.company_name}</p>
+                          {app.location && (
+                            <p className="text-xs text-gray-400">{app.location}</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="text-sm text-gray-700">{app.job_title}</p>
+                      {app.salary_range && (
+                        <p className="text-xs text-gray-400">{app.salary_range}</p>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${
+                          STATUS_COLORS[app.status as ApplicationStatus] || STATUS_COLORS.unknown
+                        }`}
+                      >
+                        {STATUS_LABELS[app.status as ApplicationStatus] || app.status}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          PRIORITY_COLORS[app.priority as keyof typeof PRIORITY_COLORS] || ""
+                        }`}
+                      >
+                        {PRIORITY_LABELS[app.priority as keyof typeof PRIORITY_LABELS] || app.priority}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-500">{app.source || "-"}</td>
+                    <td className="px-5 py-4 text-sm text-gray-500">
+                      {app.applied_at
+                        ? new Date(app.applied_at).toLocaleDateString("zh-CN")
+                        : "-"}
+                    </td>
+                    <td className="px-5 py-4">
+                      {days !== null ? (
+                        <span className={`text-sm font-medium ${days > 14 ? "text-amber-600" : days > 7 ? "text-gray-600" : "text-gray-400"}`}>
+                          {days} 天
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-300">-</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {app.job_url && (
+                          <a
+                            href={app.job_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 text-gray-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+                            title="打开链接"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
+                        <button
+                          onClick={(e) => handleEdit(e, app)}
+                          className="p-2 text-gray-400 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors"
+                          title="编辑"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDelete(e, app.id)}
+                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Form Dialog */}
+      {showForm && (
+        <ApplicationForm
+          application={editingApp}
+          onClose={handleFormClose}
+        />
+      )}
+    </div>
+  );
+}
