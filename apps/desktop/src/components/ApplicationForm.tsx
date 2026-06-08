@@ -89,6 +89,26 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
       setFormError("请填写公司名称和岗位名称");
       return;
     }
+    const validateOptionalHttpUrl = (value: string, label: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return "";
+      try {
+        const parsed = new URL(trimmed);
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          return `${label}必须是 http/https 地址`;
+        }
+      } catch {
+        return `${label}格式无效`;
+      }
+      return "";
+    };
+    const submitUrlError =
+      validateOptionalHttpUrl(form.job_url, "JD 链接") ||
+      validateOptionalHttpUrl(form.status_url, "状态页 URL");
+    if (submitUrlError) {
+      setFormError(submitUrlError);
+      return;
+    }
 
     setSaving(true);
     setFormError("");

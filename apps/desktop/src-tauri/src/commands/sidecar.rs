@@ -3,7 +3,13 @@ use std::path::PathBuf;
 use tauri::command;
 use tauri::Manager;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, ChildStdout, Command};
+use tokio::time::{timeout, Duration};
+
+const SIDECAR_CHECK_TIMEOUT_SECS: u64 = 75;
+const SIDECAR_FETCH_TIMEOUT_SECS: u64 = 60;
+const SIDECAR_BATCH_BASE_TIMEOUT_SECS: u64 = 45;
+const SIDECAR_BATCH_PER_TARGET_TIMEOUT_SECS: u64 = 45;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -118,6 +124,32 @@ fn resolve_profile_dir(app_handle: &tauri::AppHandle, profile_dir: &str) -> Resu
     Ok(resolved.to_string_lossy().to_string())
 }
 
+async fn read_sidecar_response_line(
+    child: &mut Child,
+    stdout: ChildStdout,
+    timeout_secs: u64,
+    label: &str,
+) -> Result<String, String> {
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+
+    match timeout(Duration::from_secs(timeout_secs), reader.read_line(&mut line)).await {
+        Ok(Ok(0)) => {
+            let _ = child.kill().await;
+            Err(format!("{} exited without a response", label))
+        }
+        Ok(Ok(_)) => Ok(line),
+        Ok(Err(e)) => {
+            let _ = child.kill().await;
+            Err(format!("Failed to read {} stdout: {}", label, e))
+        }
+        Err(_) => {
+            let _ = child.kill().await;
+            Err(format!("{} timed out after {} seconds", label, timeout_secs))
+        }
+    }
+}
+
 #[command]
 pub async fn get_app_data_dir(app_handle: tauri::AppHandle) -> Result<String, String> {
     let dir = app_handle
@@ -198,17 +230,22 @@ pub async fn run_sidecar_check(
         .take()
         .ok_or_else(|| "Failed to get stdout".to_string())?;
 
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .await
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+    let line = read_sidecar_response_line(
+        &mut child,
+        stdout,
+        SIDECAR_CHECK_TIMEOUT_SECS,
+        "Sidecar check",
+    ).await?;
 
     eprintln!("[rust] Received response: {}", line.trim());
 
-    let response: SidecarCheckResponse = serde_json::from_str(&line.trim())
-        .map_err(|e| format!("Failed to parse sidecar response: {}. Raw: {}", e, line))?;
+    let response: SidecarCheckResponse = match serde_json::from_str(&line.trim()) {
+        Ok(response) => response,
+        Err(e) => {
+            let _ = child.kill().await;
+            return Err(format!("Failed to parse sidecar response: {}. Raw: {}", e, line));
+        }
+    };
 
     // Kill the sidecar process after getting the response
     let _ = child.kill().await;
@@ -345,17 +382,26 @@ pub async fn run_sidecar_batch_check(
         .take()
         .ok_or_else(|| "Failed to get stdout".to_string())?;
 
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .await
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+    let timeout_secs = SIDECAR_BATCH_BASE_TIMEOUT_SECS
+        + SIDECAR_BATCH_PER_TARGET_TIMEOUT_SECS.saturating_mul(
+            request.targets.as_ref().map(|targets| targets.len() as u64).unwrap_or(1)
+        );
+    let line = read_sidecar_response_line(
+        &mut child,
+        stdout,
+        timeout_secs,
+        "Sidecar batch check",
+    ).await?;
 
     eprintln!("[rust] Received batch response");
 
-    let response: BatchCheckResponse = serde_json::from_str(&line.trim())
-        .map_err(|e| format!("Failed to parse batch response: {}. Raw: {}", e, line))?;
+    let response: BatchCheckResponse = match serde_json::from_str(&line.trim()) {
+        Ok(response) => response,
+        Err(e) => {
+            let _ = child.kill().await;
+            return Err(format!("Failed to parse batch response: {}. Raw: {}", e, line));
+        }
+    };
 
     let _ = child.kill().await;
 
@@ -420,15 +466,20 @@ pub async fn run_sidecar_fetch_page(
         .take()
         .ok_or_else(|| "Failed to get stdout".to_string())?;
 
-    let mut reader = BufReader::new(stdout);
-    let mut line = String::new();
-    reader
-        .read_line(&mut line)
-        .await
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+    let line = read_sidecar_response_line(
+        &mut child,
+        stdout,
+        SIDECAR_FETCH_TIMEOUT_SECS,
+        "Sidecar fetch page",
+    ).await?;
 
-    let response: SidecarCheckResponse = serde_json::from_str(&line.trim())
-        .map_err(|e| format!("Failed to parse sidecar response: {}. Raw: {}", e, line))?;
+    let response: SidecarCheckResponse = match serde_json::from_str(&line.trim()) {
+        Ok(response) => response,
+        Err(e) => {
+            let _ = child.kill().await;
+            return Err(format!("Failed to parse sidecar response: {}. Raw: {}", e, line));
+        }
+    };
 
     let _ = child.kill().await;
 

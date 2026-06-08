@@ -64,11 +64,101 @@ fn extract_domain(url: &str) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+fn validate_status_url(url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(url).map_err(|_| "状态页 URL 格式无效".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err("状态页 URL 必须是有效的 http/https 地址".to_string());
+    }
+    Ok(())
+}
+
+fn is_valid_check_frequency(frequency: &str) -> bool {
+    matches!(frequency, "manual" | "daily" | "every_6h" | "every_12h")
+}
+
+fn is_valid_application_status(status: &str) -> bool {
+    matches!(
+        status,
+        "to_apply"
+            | "applied"
+            | "received"
+            | "under_review"
+            | "assessment"
+            | "interview"
+            | "final_interview"
+            | "offer"
+            | "rejected"
+            | "withdrawn"
+            | "unknown"
+    )
+}
+
+fn is_valid_login_state(state: &str) -> bool {
+    matches!(
+        state,
+        "valid" | "expired" | "captcha_required" | "mfa_required" | "blocked" | "unknown"
+    )
+}
+
+fn validate_tracking_target_create_input(input: &CreateTrackingTargetInput) -> Result<(), String> {
+    validate_status_url(&input.status_url)?;
+    if let Some(frequency) = input.check_frequency.as_deref() {
+        if !is_valid_check_frequency(frequency) {
+            return Err(format!("Unsupported check frequency: {}", frequency));
+        }
+    }
+    if let Some(ats_type) = input.ats_type.as_deref() {
+        if ats_type.trim().is_empty() {
+            return Err("ATS 类型不能为空".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_tracking_target_update_input(input: &UpdateTrackingTargetInput) -> Result<(), String> {
+    if let Some(url) = input.status_url.as_deref() {
+        validate_status_url(url)?;
+    }
+    if let Some(frequency) = input.check_frequency.as_deref() {
+        if !is_valid_check_frequency(frequency) {
+            return Err(format!("Unsupported check frequency: {}", frequency));
+        }
+    }
+    if let Some(status) = input.current_status.as_deref() {
+        if !is_valid_application_status(status) {
+            return Err(format!("Unsupported application status: {}", status));
+        }
+    }
+    if let Some(status) = input.last_status.as_deref() {
+        if !is_valid_application_status(status) {
+            return Err(format!("Unsupported application status: {}", status));
+        }
+    }
+    if let Some(state) = input.login_state.as_deref() {
+        if !is_valid_login_state(state) {
+            return Err(format!("Unsupported login state: {}", state));
+        }
+    }
+    if let Some(ats_type) = input.ats_type.as_deref() {
+        if ats_type.trim().is_empty() {
+            return Err("ATS 类型不能为空".to_string());
+        }
+    }
+    if let Some(enabled) = input.enabled {
+        if !matches!(enabled, 0 | 1) {
+            return Err("enabled 只能是 0 或 1".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[command]
 pub async fn create_tracking_target(
     state: State<'_, AppState>,
     input: CreateTrackingTargetInput,
 ) -> Result<TrackingTarget, String> {
+    validate_tracking_target_create_input(&input)?;
+
     let pool = &state.db;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -80,7 +170,7 @@ pub async fn create_tracking_target(
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
-        .unwrap_or_else(|| "unknown".to_string());
+        .ok_or_else(|| "Application not found".to_string())?;
 
     sqlx::query(
         "INSERT INTO tracking_targets (id, application_id, domain, status_url, ats_type, check_frequency, current_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -134,6 +224,8 @@ pub async fn update_tracking_target(
     id: String,
     input: UpdateTrackingTargetInput,
 ) -> Result<TrackingTarget, String> {
+    validate_tracking_target_update_input(&input)?;
+
     let pool = &state.db;
     let now = chrono::Utc::now().to_rfc3339();
 

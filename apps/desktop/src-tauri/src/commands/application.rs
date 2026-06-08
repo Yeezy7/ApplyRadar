@@ -102,11 +102,115 @@ where
     deserializer.deserialize_option(NullableStringVisitor)
 }
 
+fn is_valid_application_status(status: &str) -> bool {
+    matches!(
+        status,
+        "to_apply"
+            | "applied"
+            | "received"
+            | "under_review"
+            | "assessment"
+            | "interview"
+            | "final_interview"
+            | "offer"
+            | "rejected"
+            | "withdrawn"
+            | "unknown"
+    )
+}
+
+fn is_valid_priority(priority: &str) -> bool {
+    matches!(priority, "low" | "medium" | "high")
+}
+
+fn is_valid_source(source: &str) -> bool {
+    matches!(source, "official" | "email" | "referral" | "linkedin" | "boss" | "manual")
+}
+
+fn validate_non_empty(value: &str, field_label: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{}不能为空", field_label));
+    }
+    Ok(())
+}
+
+fn validate_http_url(value: &str, field_label: &str) -> Result<(), String> {
+    validate_non_empty(value, field_label)?;
+    let parsed = url::Url::parse(value).map_err(|_| format!("{}格式无效", field_label))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err(format!("{}必须是有效的 http/https 地址", field_label));
+    }
+    Ok(())
+}
+
+fn validate_create_application_input(input: &CreateApplicationInput) -> Result<(), String> {
+    validate_non_empty(&input.company_name, "公司名称")?;
+    validate_non_empty(&input.job_title, "岗位名称")?;
+
+    if let Some(status) = input.status.as_deref() {
+        if !is_valid_application_status(status) {
+            return Err(format!("Unsupported application status: {}", status));
+        }
+    }
+    if let Some(priority) = input.priority.as_deref() {
+        if !is_valid_priority(priority) {
+            return Err(format!("Unsupported priority: {}", priority));
+        }
+    }
+    if let Some(source) = input.source.as_deref() {
+        if !is_valid_source(source) {
+            return Err(format!("Unsupported source: {}", source));
+        }
+    }
+    if let Some(job_url) = input.job_url.as_deref() {
+        validate_http_url(job_url, "JD 链接")?;
+    }
+    if let Some(status_url) = input.status_url.as_deref() {
+        validate_http_url(status_url, "状态页 URL")?;
+    }
+
+    Ok(())
+}
+
+fn validate_update_application_input(input: &UpdateApplicationInput) -> Result<(), String> {
+    if let Some(company_name) = input.company_name.as_deref() {
+        validate_non_empty(company_name, "公司名称")?;
+    }
+    if let Some(job_title) = input.job_title.as_deref() {
+        validate_non_empty(job_title, "岗位名称")?;
+    }
+    if let Some(status) = input.status.as_deref() {
+        if !is_valid_application_status(status) {
+            return Err(format!("Unsupported application status: {}", status));
+        }
+    }
+    if let Some(priority) = input.priority.as_deref() {
+        if !is_valid_priority(priority) {
+            return Err(format!("Unsupported priority: {}", priority));
+        }
+    }
+    if let Some(Some(source)) = input.source.as_ref() {
+        if !is_valid_source(source) {
+            return Err(format!("Unsupported source: {}", source));
+        }
+    }
+    if let Some(Some(job_url)) = input.job_url.as_ref() {
+        validate_http_url(job_url, "JD 链接")?;
+    }
+    if let Some(Some(status_url)) = input.status_url.as_ref() {
+        validate_http_url(status_url, "状态页 URL")?;
+    }
+
+    Ok(())
+}
+
 #[command]
 pub async fn create_application(
     state: State<'_, AppState>,
     input: CreateApplicationInput,
 ) -> Result<Application, String> {
+    validate_create_application_input(&input)?;
+
     let pool = &state.db;
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -202,6 +306,8 @@ pub async fn update_application(
     id: String,
     input: UpdateApplicationInput,
 ) -> Result<Application, String> {
+    validate_update_application_input(&input)?;
+
     let pool = &state.db;
     let now = chrono::Utc::now().to_rfc3339();
     let requested_status = input.status.clone();
