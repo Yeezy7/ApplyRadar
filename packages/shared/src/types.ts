@@ -115,6 +115,7 @@ export interface Reminder {
   reminder_type?: ReminderType;
   remind_at: string;
   is_done: number;
+  notified_at?: string;
   created_by: CreatedBy;
   created_at: string;
   updated_at: string;

@@ -1,4 +1,5 @@
 use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::Row;
 use sqlx::SqlitePool;
 use tauri::Manager;
 
@@ -107,6 +108,7 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             reminder_type TEXT,
             remind_at TEXT NOT NULL,
             is_done INTEGER DEFAULT 0,
+            notified_at TEXT,
             created_by TEXT DEFAULT 'user',
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
@@ -160,6 +162,33 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             .await
             .map_err(|e| format!("Migration failed: {}", e))?;
     }
+
+    ensure_column(pool, "reminders", "notified_at", "TEXT").await?;
+
+    Ok(())
+}
+
+async fn ensure_column(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+    column_type: &str,
+) -> Result<(), String> {
+    let pragma = format!("PRAGMA table_info({})", table);
+    let rows = sqlx::query(&pragma)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| format!("Failed to inspect table '{}': {}", table, e))?;
+
+    if rows.iter().any(|row| row.get::<String, _>("name") == column) {
+        return Ok(());
+    }
+
+    let alter = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, column_type);
+    sqlx::query(&alter)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("Failed to add column '{}.{}': {}", table, column, e))?;
 
     Ok(())
 }

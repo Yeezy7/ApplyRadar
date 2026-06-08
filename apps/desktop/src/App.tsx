@@ -39,6 +39,13 @@ interface AutoCheckNotifyPayload {
   applicationId?: string | null;
 }
 
+interface ReminderDueNotifyPayload {
+  title: string;
+  body: string;
+  reminderId: string;
+  applicationId?: string | null;
+}
+
 const navItems: {
   key: Page;
   label: string;
@@ -68,20 +75,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    const unlisteners: Array<() => void> = [];
 
     listen<AutoCheckNotifyPayload>("auto-check:notify", (event) => {
       const payload = event.payload;
       if (!payload?.title || !payload?.body) return;
       void notificationService.notify(payload.title, payload.body);
     }).then((fn) => {
-      unlisten = fn;
+      unlisteners.push(fn);
     }).catch((e) => {
       console.error("Failed to listen auto-check notifications:", e);
     });
 
+    listen<ReminderDueNotifyPayload>("reminder:due", (event) => {
+      const payload = event.payload;
+      if (!payload?.title || !payload?.body) return;
+      void notificationService.notify(payload.title, payload.body);
+    }).then((fn) => {
+      unlisteners.push(fn);
+    }).catch((e) => {
+      console.error("Failed to listen reminder notifications:", e);
+    });
+
     return () => {
-      unlisten?.();
+      for (const unlisten of unlisteners) {
+        unlisten();
+      }
     };
   }, []);
 

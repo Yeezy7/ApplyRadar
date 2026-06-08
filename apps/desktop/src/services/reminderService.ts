@@ -7,6 +7,7 @@ export interface CreateReminderInput {
   content?: string;
   reminder_type?: string;
   remind_at: string;
+  notified_at?: string;
 }
 
 export async function createReminder(input: CreateReminderInput): Promise<Reminder> {

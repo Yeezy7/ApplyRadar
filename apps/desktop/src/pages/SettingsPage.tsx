@@ -187,6 +187,7 @@ export default function SettingsPage() {
             content: reminder.content,
             reminder_type: reminder.reminder_type,
             remind_at: reminder.remind_at,
+            notified_at: reminder.notified_at,
           });
           if (reminder.is_done) {
             await reminderService.markReminderDone(created.id);

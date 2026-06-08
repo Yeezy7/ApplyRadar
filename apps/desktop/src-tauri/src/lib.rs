@@ -181,6 +181,34 @@ pub fn run() {
                 }
             });
 
+            // Start reminder notification timer
+            let db = pool.clone();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+
+                    let notifications_enabled = settings::get_setting_raw(&db, "notifications_enabled")
+                        .await
+                        .map(|value| value == "true")
+                        .unwrap_or(true);
+
+                    if !notifications_enabled {
+                        continue;
+                    }
+
+                    match reminder::emit_due_reminder_notifications(&app_handle, &db).await {
+                        Ok(count) if count > 0 => {
+                            println!("[reminders] Emitted {} due reminder notifications", count);
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!("[reminders] Failed to emit due reminders: {}", e);
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
