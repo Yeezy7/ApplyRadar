@@ -51,12 +51,59 @@ pub struct CreateReminderInput {
     pub notified_at: Option<String>,
 }
 
+fn is_valid_reminder_type(reminder_type: &str) -> bool {
+    matches!(
+        reminder_type,
+        "interview"
+            | "assessment_deadline"
+            | "offer_deadline"
+            | "follow_up"
+            | "document_required"
+            | "custom"
+    )
+}
+
+fn validate_rfc3339(value: &str, field_label: &str) -> Result<(), String> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .map(|_| ())
+        .map_err(|_| format!("{}时间格式无效", field_label))
+}
+
+async fn validate_create_reminder_input(pool: &SqlitePool, input: &CreateReminderInput) -> Result<(), String> {
+    if input.title.trim().is_empty() {
+        return Err("提醒标题不能为空".to_string());
+    }
+    validate_rfc3339(&input.remind_at, "提醒")?;
+    if let Some(notified_at) = input.notified_at.as_deref() {
+        validate_rfc3339(notified_at, "通知")?;
+    }
+    if let Some(reminder_type) = input.reminder_type.as_deref() {
+        if !is_valid_reminder_type(reminder_type) {
+            return Err(format!("Unsupported reminder type: {}", reminder_type));
+        }
+    }
+    if let Some(application_id) = input.application_id.as_deref() {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM applications WHERE id = ?")
+            .bind(application_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some();
+        if !exists {
+            return Err("Application not found".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[command]
 pub async fn create_reminder(
     state: State<'_, AppState>,
     input: CreateReminderInput,
 ) -> Result<Reminder, String> {
     let pool = &state.db;
+    validate_create_reminder_input(pool, &input).await?;
+
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -65,7 +112,7 @@ pub async fn create_reminder(
     )
     .bind(&id)
     .bind(&input.application_id)
-    .bind(&input.title)
+    .bind(input.title.trim())
     .bind(&input.content)
     .bind(&input.reminder_type)
     .bind(&input.remind_at)
@@ -126,12 +173,16 @@ pub async fn mark_reminder_done(
 ) -> Result<(), String> {
     let now = chrono::Utc::now().to_rfc3339();
 
-    sqlx::query("UPDATE reminders SET is_done = 1, updated_at = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE reminders SET is_done = 1, updated_at = ? WHERE id = ?")
         .bind(&now)
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|e| e.to_string())?;
+
+    if result.rows_affected() == 0 {
+        return Err("Reminder not found".to_string());
+    }
 
     Ok(())
 }
@@ -141,11 +192,14 @@ pub async fn delete_reminder(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
-    sqlx::query("DELETE FROM reminders WHERE id = ?")
+    let result = sqlx::query("DELETE FROM reminders WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
         .await
         .map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err("Reminder not found".to_string());
+    }
     Ok(())
 }
 

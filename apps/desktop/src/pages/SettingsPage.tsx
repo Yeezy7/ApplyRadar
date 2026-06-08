@@ -48,6 +48,67 @@ const eventImportKey = (applicationId: string, event: Pick<ApplicationEvent, "ev
     normalizeImportValue(event.new_status),
   ].join("\u001f");
 
+const VALID_APPLICATION_STATUSES = new Set([
+  "to_apply",
+  "applied",
+  "received",
+  "under_review",
+  "assessment",
+  "interview",
+  "final_interview",
+  "offer",
+  "rejected",
+  "withdrawn",
+  "unknown",
+]);
+const VALID_PRIORITIES = new Set(["low", "medium", "high"]);
+const VALID_SOURCES = new Set(["official", "email", "referral", "linkedin", "boss", "manual"]);
+const VALID_CHECK_FREQUENCIES = new Set(["manual", "daily", "every_6h", "every_12h"]);
+const VALID_LOGIN_STATES = new Set(["valid", "expired", "captcha_required", "mfa_required", "blocked", "unknown"]);
+const VALID_REMINDER_TYPES = new Set(["interview", "assessment_deadline", "offer_deadline", "follow_up", "document_required", "custom"]);
+const VALID_EVENT_TYPES = new Set(["status_change", "login_expired", "check_success", "check_failed", "note_added", "manual"]);
+const VALID_HANDLED_ACTIONS = new Set(["accepted", "dismissed"]);
+
+const optionalText = (value?: string | null) => {
+  const trimmed = normalizeImportValue(value);
+  return trimmed || undefined;
+};
+
+const optionalHttpUrl = (value?: string | null) => {
+  const trimmed = normalizeImportValue(value);
+  if (!trimmed) return undefined;
+  try {
+    const parsed = new URL(trimmed);
+    return ["http:", "https:"].includes(parsed.protocol) && parsed.host ? trimmed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const optionalDateString = (value?: string | null) => {
+  const trimmed = normalizeImportValue(value);
+  if (!trimmed) return undefined;
+  const time = Date.parse(trimmed);
+  return Number.isNaN(time) ? undefined : trimmed;
+};
+
+const optionalIsoDateTime = (value?: string | null) => {
+  const trimmed = normalizeImportValue(value);
+  if (!trimmed) return undefined;
+  const time = Date.parse(trimmed);
+  return Number.isNaN(time) ? undefined : new Date(time).toISOString();
+};
+
+const validOrDefault = <T extends string>(value: string | undefined | null, allowed: Set<string>, fallback: T) => {
+  const trimmed = normalizeImportValue(value);
+  return (allowed.has(trimmed) ? trimmed : fallback) as T;
+};
+
+const validOrUndefined = <T extends string>(value: string | undefined | null, allowed: Set<string>) => {
+  const trimmed = normalizeImportValue(value);
+  return (trimmed && allowed.has(trimmed) ? trimmed : undefined) as T | undefined;
+};
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(getSettings);
   const [saved, setSaved] = useState(false);
@@ -185,7 +246,28 @@ export default function SettingsPage() {
 
       for (const app of data.applications) {
         try {
-          const key = applicationImportKey(app);
+          const companyName = optionalText(app.company_name);
+          const jobTitle = optionalText(app.job_title);
+          if (!companyName || !jobTitle) {
+            throw new Error("公司名称或岗位名称缺失");
+          }
+
+          const sanitizedApp = {
+            company_name: companyName,
+            job_title: jobTitle,
+            location: optionalText(app.location),
+            salary_range: optionalText(app.salary_range),
+            job_url: optionalHttpUrl(app.job_url),
+            status_url: optionalHttpUrl(app.status_url),
+            source: validOrDefault(app.source, VALID_SOURCES, "manual"),
+            status: validOrDefault(app.status, VALID_APPLICATION_STATUSES, "unknown"),
+            priority: validOrDefault(app.priority, VALID_PRIORITIES, "medium"),
+            applied_at: optionalDateString(app.applied_at),
+            deadline_at: optionalDateString(app.deadline_at),
+            notes: optionalText(app.notes),
+          };
+
+          const key = applicationImportKey(sanitizedApp);
           const existing = existingAppByKey.get(key);
           if (existing) {
             appIdMap.set(app.id, existing.id);
@@ -193,20 +275,7 @@ export default function SettingsPage() {
             continue;
           }
 
-          const created = await applicationService.createApplication({
-            company_name: app.company_name,
-            job_title: app.job_title,
-            location: app.location,
-            salary_range: app.salary_range,
-            job_url: app.job_url,
-            status_url: app.status_url,
-            source: app.source,
-            status: app.status,
-            priority: app.priority,
-            applied_at: app.applied_at,
-            deadline_at: app.deadline_at,
-            notes: app.notes,
-          });
+          const created = await applicationService.createApplication(sanitizedApp);
           appIdMap.set(app.id, created.id);
           existingAppByKey.set(key, created);
           appCount++;
@@ -219,8 +288,9 @@ export default function SettingsPage() {
       for (const target of data.trackingTargets || []) {
         try {
           const applicationId = appIdMap.get(target.application_id);
-          if (!applicationId || !target.status_url) continue;
-          const key = targetImportKey(applicationId, target.status_url);
+          const statusUrl = optionalHttpUrl(target.status_url);
+          if (!applicationId || !statusUrl) continue;
+          const key = targetImportKey(applicationId, statusUrl);
           if (existingTargetKeys.has(key)) {
             skippedCount++;
             continue;
@@ -228,21 +298,21 @@ export default function SettingsPage() {
 
           const created = await trackerService.createTrackingTarget({
             application_id: applicationId,
-            status_url: target.status_url,
-            ats_type: target.ats_type,
-            check_frequency: target.check_frequency,
+            status_url: statusUrl,
+            ats_type: optionalText(target.ats_type) || "generic",
+            check_frequency: validOrDefault(target.check_frequency, VALID_CHECK_FREQUENCIES, "daily"),
           });
 
           await trackerService.updateTrackingTarget(created.id, {
-            enabled: target.enabled,
-            current_status: target.current_status,
-            last_status: target.last_status,
-            login_state: target.login_state,
-            last_checked_at: target.last_checked_at,
-            last_success_at: target.last_success_at,
-            last_error: target.last_error,
-            last_text_hash: target.last_text_hash,
-            profile_dir: target.profile_dir,
+            enabled: target.enabled === 0 ? 0 : 1,
+            current_status: validOrDefault(target.current_status, VALID_APPLICATION_STATUSES, "unknown"),
+            last_status: validOrUndefined(target.last_status, VALID_APPLICATION_STATUSES),
+            login_state: validOrDefault(target.login_state, VALID_LOGIN_STATES, "unknown"),
+            last_checked_at: optionalDateString(target.last_checked_at),
+            last_success_at: optionalDateString(target.last_success_at),
+            last_error: optionalText(target.last_error),
+            last_text_hash: optionalText(target.last_text_hash),
+            profile_dir: optionalText(target.profile_dir),
           });
           existingTargetKeys.add(key);
           targetCount++;
@@ -259,7 +329,20 @@ export default function SettingsPage() {
             : undefined;
           if (reminder.application_id && !applicationId) continue;
 
-          const key = reminderImportKey(applicationId, reminder);
+          const title = optionalText(reminder.title);
+          const remindAt = optionalIsoDateTime(reminder.remind_at);
+          if (!title || !remindAt) {
+            throw new Error("提醒标题或时间缺失");
+          }
+
+          const sanitizedReminder = {
+            title,
+            content: optionalText(reminder.content),
+            reminder_type: validOrDefault(reminder.reminder_type, VALID_REMINDER_TYPES, "custom"),
+            remind_at: remindAt,
+          };
+
+          const key = reminderImportKey(applicationId, sanitizedReminder);
           if (existingReminderKeys.has(key)) {
             skippedCount++;
             continue;
@@ -267,11 +350,11 @@ export default function SettingsPage() {
 
           const created = await reminderService.createReminder({
             application_id: applicationId,
-            title: reminder.title,
-            content: reminder.content,
-            reminder_type: reminder.reminder_type,
-            remind_at: reminder.remind_at,
-            notified_at: reminder.notified_at,
+            title: sanitizedReminder.title,
+            content: sanitizedReminder.content,
+            reminder_type: sanitizedReminder.reminder_type,
+            remind_at: sanitizedReminder.remind_at,
+            notified_at: optionalIsoDateTime(reminder.notified_at),
           });
           if (reminder.is_done) {
             await reminderService.markReminderDone(created.id);
@@ -289,7 +372,25 @@ export default function SettingsPage() {
           const applicationId = appIdMap.get(event.application_id);
           if (!applicationId) continue;
 
-          const key = eventImportKey(applicationId, event);
+          const title = optionalText(event.title);
+          if (!title) {
+            throw new Error("事件标题缺失");
+          }
+          const handledAt = optionalIsoDateTime(event.handled_at);
+          const handledAction = handledAt
+            ? validOrUndefined(event.handled_action, VALID_HANDLED_ACTIONS)
+            : undefined;
+          const sanitizedEvent = {
+            event_type: validOrDefault(event.event_type, VALID_EVENT_TYPES, "manual") as ApplicationEvent["event_type"],
+            title,
+            content: optionalText(event.content),
+            old_status: validOrUndefined(event.old_status, VALID_APPLICATION_STATUSES) as ApplicationEvent["old_status"],
+            new_status: validOrUndefined(event.new_status, VALID_APPLICATION_STATUSES) as ApplicationEvent["new_status"],
+            handled_at: handledAt,
+            handled_action: handledAction as ApplicationEvent["handled_action"],
+          };
+
+          const key = eventImportKey(applicationId, sanitizedEvent);
           if (existingEventKeys.has(key)) {
             skippedCount++;
             continue;
@@ -297,13 +398,13 @@ export default function SettingsPage() {
 
           await eventService.createEvent({
             application_id: applicationId,
-            event_type: event.event_type,
-            title: event.title,
-            content: event.content,
-            old_status: event.old_status,
-            new_status: event.new_status,
-            handled_at: event.handled_at,
-            handled_action: event.handled_action,
+            event_type: sanitizedEvent.event_type,
+            title: sanitizedEvent.title,
+            content: sanitizedEvent.content,
+            old_status: sanitizedEvent.old_status,
+            new_status: sanitizedEvent.new_status,
+            handled_at: sanitizedEvent.handled_at,
+            handled_action: sanitizedEvent.handled_action,
           });
           existingEventKeys.add(key);
           eventCount++;
