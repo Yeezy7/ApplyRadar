@@ -1048,6 +1048,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
       {showEditForm && (
         <ApplicationForm
           application={app}
+          onSaved={setNotice}
           onClose={() => {
             setShowEditForm(false);
             loadData();

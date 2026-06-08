@@ -61,9 +61,10 @@ export default function KanbanPage({ onSelectApp }: Props) {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dragOverStatus, setDragOverStatus] = useState<ApplicationStatus | null>(null);
+  const [dragOverColumnId, setDragOverColumnId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadApplications = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -111,20 +112,20 @@ export default function KanbanPage({ onSelectApp }: Props) {
 
   const handleDragEnd = () => {
     setDraggedId(null);
-    setDragOverStatus(null);
+    setDragOverColumnId(null);
   };
 
   const handleDragOver = (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
-    setDragOverStatus(columnId as ApplicationStatus);
+    setDragOverColumnId(columnId);
   };
 
   const handleDragLeave = () => {
-    setDragOverStatus(null);
+    setDragOverColumnId(null);
   };
 
   const handleDrop = async (column: KanbanColumn) => {
-    setDragOverStatus(null);
+    setDragOverColumnId(null);
     if (!draggedId) return;
 
     const app = applications.find((a) => a.id === draggedId);
@@ -166,6 +167,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
       setApplications((prev) =>
         prev.map((a) => (a.id === draggedId ? { ...a, status: oldStatus } : a))
       );
+      setNotice({ success: false, message: `更新状态失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -237,6 +239,16 @@ export default function KanbanPage({ onSelectApp }: Props) {
         </div>
       </div>
 
+      {notice && (
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+          notice.success
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-red-100 bg-red-50 text-red-700"
+        }`}>
+          {notice.message}
+        </div>
+      )}
+
       {/* Kanban Board */}
       {applications.length === 0 ? (
         <div className="text-center py-20">
@@ -250,7 +262,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
         <div className="grid grid-cols-5 gap-4 pb-4">
           {KANBAN_COLUMNS.map((col) => {
             const apps = getColumnApps(col);
-            const isDragOver = dragOverStatus === col.id;
+            const isDragOver = dragOverColumnId === col.id;
 
             return (
               <div
@@ -375,6 +387,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
       {/* Form Dialog */}
       {showForm && (
         <ApplicationForm
+          onSaved={setNotice}
           onClose={() => {
             setShowForm(false);
             loadApplications(false);

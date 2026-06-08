@@ -8,9 +8,10 @@ import { getSettings, isAIConfigured } from "../stores/settings";
 interface Props {
   application?: Application | null;
   onClose: () => void;
+  onSaved?: (result: { success: boolean; message: string }) => void;
 }
 
-export default function ApplicationForm({ application, onClose }: Props) {
+export default function ApplicationForm({ application, onClose, onSaved }: Props) {
   const [form, setForm] = useState({
     company_name: application?.company_name || "",
     job_title: application?.job_title || "",
@@ -27,6 +28,7 @@ export default function ApplicationForm({ application, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [fetchingUrl, setFetchingUrl] = useState(false);
   const [urlError, setUrlError] = useState("");
+  const [formError, setFormError] = useState("");
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -83,9 +85,13 @@ export default function ApplicationForm({ application, onClose }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.company_name.trim() || !form.job_title.trim()) return;
+    if (!form.company_name.trim() || !form.job_title.trim()) {
+      setFormError("请填写公司名称和岗位名称");
+      return;
+    }
 
     setSaving(true);
+    setFormError("");
     try {
       const input = {
         ...form,
@@ -118,6 +124,7 @@ export default function ApplicationForm({ application, onClose }: Props) {
       }
 
       // Auto-create or update tracking target if status_url changed
+      let syncWarning = "";
       try {
         const existingTargets = await trackerService.listTrackingTargets(savedApp.id);
         const newUrl = form.status_url?.trim();
@@ -164,11 +171,17 @@ export default function ApplicationForm({ application, onClose }: Props) {
         }
       } catch (err) {
         console.error("Failed to sync tracking target:", err);
+        syncWarning = `求职记录已保存，但监控目标同步失败: ${err instanceof Error ? err.message : String(err)}`;
       }
 
+      onSaved?.({
+        success: !syncWarning,
+        message: syncWarning || (application ? "求职记录已保存" : "求职记录已创建"),
+      });
       onClose();
     } catch (e) {
       console.error("Failed to save:", e);
+      setFormError(`保存失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -190,6 +203,12 @@ export default function ApplicationForm({ application, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {formError && (
+            <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {formError}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">公司名称 *</label>

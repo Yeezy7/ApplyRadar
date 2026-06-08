@@ -346,6 +346,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       {showForm && (
         <ApplicationForm
           application={editingApp}
+          onSaved={setNotice}
           onClose={handleFormClose}
         />
       )}

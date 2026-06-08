@@ -46,69 +46,69 @@ export default function DashboardPage() {
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown[]>([]);
   const [recentApps, setRecentApps] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadDashboard = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [apps, targets, reminders] = await Promise.all([
+        applicationService.listApplications(),
+        trackerService.listTrackingTargets(),
+        reminderService.listReminders(undefined, false),
+      ]);
+
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+      const active = apps.filter((a) =>
+        ACTIVE_STATUSES.includes(a.status as ApplicationStatus)
+      );
+      const thisWeek = apps.filter(
+        (a) => new Date(a.created_at) >= weekAgo
+      );
+      const offers = apps.filter((a) => a.status === "offer");
+      const loginExpired = targets.filter(
+        (t) => t.login_state === "expired" || t.login_state === "blocked"
+      );
+
+      setStats({
+        total: apps.length,
+        active: active.length,
+        thisWeek: thisWeek.length,
+        offers: offers.length,
+        loginExpired: loginExpired.length,
+        pendingReminders: reminders.length,
+      });
+
+      const statusCounts = new Map<ApplicationStatus, number>();
+      for (const app of apps) {
+        const s = app.status as ApplicationStatus;
+        statusCounts.set(s, (statusCounts.get(s) || 0) + 1);
+      }
+      const breakdown: StatusBreakdown[] = [];
+      for (const [status, count] of statusCounts) {
+        if (count > 0) {
+          breakdown.push({ status, count });
+        }
+      }
+      breakdown.sort((a, b) => b.count - a.count);
+      setStatusBreakdown(breakdown);
+
+      const sorted = [...apps].sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+      setRecentApps(sorted.slice(0, 5));
+    } catch (e) {
+      console.error("Failed to load dashboard:", e);
+      setError(`加载仪表盘失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [apps, targets, reminders] = await Promise.all([
-          applicationService.listApplications(),
-          trackerService.listTrackingTargets(),
-          reminderService.listReminders(undefined, false),
-        ]);
-
-        const now = new Date();
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-        const active = apps.filter((a) =>
-          ACTIVE_STATUSES.includes(a.status as ApplicationStatus)
-        );
-        const thisWeek = apps.filter(
-          (a) => new Date(a.created_at) >= weekAgo
-        );
-        const offers = apps.filter((a) => a.status === "offer");
-        const loginExpired = targets.filter(
-          (t) => t.login_state === "expired" || t.login_state === "blocked"
-        );
-
-        setStats({
-          total: apps.length,
-          active: active.length,
-          thisWeek: thisWeek.length,
-          offers: offers.length,
-          loginExpired: loginExpired.length,
-          pendingReminders: reminders.length,
-        });
-
-        // Status breakdown
-        const statusCounts = new Map<ApplicationStatus, number>();
-        for (const app of apps) {
-          const s = app.status as ApplicationStatus;
-          statusCounts.set(s, (statusCounts.get(s) || 0) + 1);
-        }
-        const breakdown: StatusBreakdown[] = [];
-        for (const [status, count] of statusCounts) {
-          if (count > 0) {
-            breakdown.push({ status, count });
-          }
-        }
-        breakdown.sort((a, b) => b.count - a.count);
-        setStatusBreakdown(breakdown);
-
-        // Recent applications (last 5)
-        const sorted = [...apps].sort(
-          (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        );
-        setRecentApps(sorted.slice(0, 5));
-
-      } catch (e) {
-        console.error("Failed to load dashboard:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
+    loadDashboard();
   }, []);
 
   if (loading) {
@@ -132,28 +132,24 @@ export default function DashboardPage() {
       value: stats.total,
       icon: BriefcaseBusiness,
       gradient: "from-stone-700 to-stone-900",
-      lightBg: "bg-stone-50",
     },
     {
       label: "进行中",
       value: stats.active,
       icon: TrendingUp,
       gradient: "from-emerald-500 to-teal-600",
-      lightBg: "bg-emerald-50",
     },
     {
       label: "本周新增",
       value: stats.thisWeek,
       icon: CalendarDays,
       gradient: "from-blue-500 to-cyan-600",
-      lightBg: "bg-blue-50",
     },
     {
       label: "待处理",
       value: stats.pendingReminders + stats.loginExpired,
       icon: stats.loginExpired > 0 ? AlertTriangle : Clock3,
       gradient: stats.loginExpired > 0 ? "from-amber-500 to-orange-600" : "from-amber-400 to-yellow-500",
-      lightBg: "bg-amber-50",
     },
   ];
 
@@ -164,6 +160,18 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-gray-900">仪表盘</h1>
         <p className="text-sm text-gray-500 mt-1">求职状态概览</p>
       </div>
+
+      {error && (
+        <div className="mb-5 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            onClick={loadDashboard}
+            className="rounded px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            重试
+          </button>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-4 gap-5 mb-8">
@@ -183,8 +191,6 @@ export default function DashboardPage() {
                   <Icon className="w-5 h-5 text-white" />
                 </div>
               </div>
-              {/* Decorative gradient blob */}
-              <div className={`absolute -bottom-4 -right-4 w-24 h-24 rounded-full ${card.lightBg} opacity-40 blur-2xl`} />
             </div>
           );
         })}
