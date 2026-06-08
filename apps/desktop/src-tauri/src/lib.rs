@@ -142,8 +142,16 @@ pub fn run() {
                             let result_str = if result.total == 0 {
                                 "无待检查目标".to_string()
                             } else {
-                                format!("检查{}个，{}成功，{}失败，{}状态变更",
-                                    result.total, result.success, result.failed, result.status_changes)
+                                let mut parts = vec![
+                                    format!("检查{}个", result.total),
+                                    format!("{}成功", result.success),
+                                    format!("{}失败", result.failed),
+                                    format!("{}状态变更", result.status_changes),
+                                ];
+                                if result.login_issues > 0 {
+                                    parts.push(format!("{}登录问题", result.login_issues));
+                                }
+                                parts.join("，")
                             };
                             let _ = settings::save_setting_raw(&db, "auto_check_last_result", &result_str).await;
                             if result.total > 0 {

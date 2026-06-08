@@ -789,7 +789,7 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                 continue;
             }
 
-            success_count += 1;
+            let mut target_failed = false;
 
             // Update target basic info
             let now = chrono::Utc::now().to_rfc3339();
@@ -985,6 +985,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                         }
                     }
                     Err(e) => {
+                        target_failed = true;
+                        failed_count += 1;
                         let error_message = e.to_string();
                         update.last_error = Some(format!("AI 识别失败: {}", error_message));
 
@@ -1015,6 +1017,10 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
 
             // Update the target
             let _ = update_tracking_target_inner(pool, &target.id, &update).await;
+
+            if !target_failed {
+                success_count += 1;
+            }
 
             if !is_login_valid {
                 break;

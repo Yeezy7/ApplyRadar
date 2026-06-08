@@ -20,6 +20,7 @@ import type {
   TrackingTarget,
   TrackingRun,
   ApplicationStatus,
+  ReminderType,
 } from "@applyradar/shared";
 import {
   STATUS_LABELS,
@@ -28,6 +29,7 @@ import {
   PRIORITY_COLORS,
   LOGIN_STATE_LABELS,
   LOGIN_STATE_COLORS,
+  REMINDER_TYPE_LABELS,
   ALL_STATUSES,
 } from "@applyradar/shared";
 import {
@@ -72,7 +74,33 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const [submittingTarget, setSubmittingTarget] = useState(false);
   const [checkingTarget, setCheckingTarget] = useState<string | null>(null);
   const [checkResults, setCheckResults] = useState<Map<string, { success: boolean; message: string }>>(new Map());
+  const [showReminderForm, setShowReminderForm] = useState(false);
+  const [reminderTitle, setReminderTitle] = useState("");
+  const [reminderContent, setReminderContent] = useState("");
+  const [reminderType, setReminderType] = useState<ReminderType>("custom");
+  const [reminderAt, setReminderAt] = useState("");
+  const [reminderError, setReminderError] = useState("");
+  const [submittingReminder, setSubmittingReminder] = useState(false);
   const requestIdRef = useRef(0);
+
+  const openReminderForm = () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    setReminderTitle("");
+    setReminderContent("");
+    setReminderType("custom");
+    setReminderAt(tomorrow.toISOString().slice(0, 16));
+    setReminderError("");
+    setShowReminderForm(true);
+  };
+
+  const closeReminderForm = () => {
+    setShowReminderForm(false);
+    setReminderTitle("");
+    setReminderContent("");
+    setReminderType("custom");
+    setReminderAt("");
+    setReminderError("");
+  };
 
   const loadData = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -213,9 +241,57 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const handleOpenLogin = async (target: TrackingTarget) => {
     try {
       const profileDir = target.profile_dir || `profiles/${target.domain}`;
-      await sidecarService.openForLogin(target.status_url, profileDir);
+      const result = await sidecarService.openForLogin(target.status_url, profileDir);
+      if (!result.success) {
+        setCheckResults(prev => {
+          const next = new Map(prev);
+          next.set(target.id, { success: false, message: result.error || "打开登录页面失败" });
+          return next;
+        });
+      }
     } catch (e) {
       console.error("Failed to open login:", e);
+      setCheckResults(prev => {
+        const next = new Map(prev);
+        next.set(target.id, { success: false, message: `打开登录页面失败: ${e}` });
+        return next;
+      });
+    }
+  };
+
+  const handleCreateReminder = async () => {
+    const title = reminderTitle.trim();
+    if (!title) {
+      setReminderError("请输入提醒标题");
+      return;
+    }
+    if (!reminderAt) {
+      setReminderError("请选择提醒时间");
+      return;
+    }
+
+    const remindAtDate = new Date(reminderAt);
+    if (Number.isNaN(remindAtDate.getTime())) {
+      setReminderError("提醒时间无效");
+      return;
+    }
+
+    setSubmittingReminder(true);
+    setReminderError("");
+    try {
+      await reminderService.createReminder({
+        application_id: applicationId,
+        title,
+        content: reminderContent.trim() || undefined,
+        reminder_type: reminderType,
+        remind_at: remindAtDate.toISOString(),
+      });
+      closeReminderForm();
+      await loadData();
+    } catch (e) {
+      setReminderError(`创建失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSubmittingReminder(false);
     }
   };
 
@@ -755,23 +831,87 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-700">提醒</h2>
           <button
-            onClick={() => {
-              const title = prompt("提醒标题：");
-              if (!title) return;
-              const remindAt = prompt("提醒时间（YYYY-MM-DD HH:mm）：", new Date().toISOString().slice(0, 16));
-              if (!remindAt) return;
-              reminderService.createReminder({
-                application_id: applicationId,
-                title,
-                remind_at: new Date(remindAt).toISOString(),
-              }).then(() => loadData());
-            }}
+            onClick={openReminderForm}
             className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
           >
             <Plus className="w-3 h-3" />
             添加提醒
           </button>
         </div>
+        {showReminderForm && (
+          <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50/60 p-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs font-medium text-gray-500">标题</label>
+                <input
+                  value={reminderTitle}
+                  onChange={(e) => {
+                    setReminderTitle(e.target.value);
+                    setReminderError("");
+                  }}
+                  placeholder="例如：准备面试材料"
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">类型</label>
+                <select
+                  value={reminderType}
+                  onChange={(e) => setReminderType(e.target.value as ReminderType)}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+                >
+                  {Object.entries(REMINDER_TYPE_LABELS).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-500">时间</label>
+                <input
+                  type="datetime-local"
+                  value={reminderAt}
+                  onChange={(e) => {
+                    setReminderAt(e.target.value);
+                    setReminderError("");
+                  }}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="mb-1 block text-xs font-medium text-gray-500">备注</label>
+                <textarea
+                  value={reminderContent}
+                  onChange={(e) => setReminderContent(e.target.value)}
+                  placeholder="可选"
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-stone-400 focus:outline-none focus:ring-2 focus:ring-stone-500/20"
+                />
+              </div>
+            </div>
+            {reminderError && (
+              <p className="mt-2 text-xs text-red-500">{reminderError}</p>
+            )}
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                onClick={closeReminderForm}
+                className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100"
+              >
+                <X className="h-3 w-3" />
+                取消
+              </button>
+              <button
+                onClick={handleCreateReminder}
+                disabled={submittingReminder}
+                className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+              >
+                {submittingReminder ? "添加中..." : "保存提醒"}
+              </button>
+            </div>
+          </div>
+        )}
         {reminders.length === 0 ? (
           <p className="text-sm text-gray-400 py-4">暂无提醒</p>
         ) : (

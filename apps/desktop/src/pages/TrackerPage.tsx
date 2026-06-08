@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { Fragment, useEffect, useState, useCallback } from "react";
 import { Play, RefreshCw, AlertTriangle, ShieldCheck, Clock3, ExternalLink, CheckCircle2, XCircle, History, ChevronDown, ChevronUp } from "lucide-react";
-import type { TrackingTarget, TrackingRun } from "@applyradar/shared";
+import type { Application, ApplicationStatus, LoginState, TrackingTarget, TrackingRun } from "@applyradar/shared";
 import {
   STATUS_LABELS,
   STATUS_COLORS,
@@ -11,6 +11,7 @@ import {
   trackerService,
   sidecarService,
   notificationService,
+  applicationService,
 } from "../services";
 import {
   processSidecarCheckException,
@@ -25,12 +26,19 @@ export default function TrackerPage() {
   const [autoCheckStatus, setAutoCheckStatus] = useState<trackerService.AutoCheckStatus | null>(null);
   const [expandedTarget, setExpandedTarget] = useState<string | null>(null);
   const [targetRuns, setTargetRuns] = useState<Map<string, TrackingRun[]>>(new Map());
+  const [applications, setApplications] = useState<Map<string, Application>>(new Map());
+  const [runningAutoCheck, setRunningAutoCheck] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadTargets = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await trackerService.listTrackingTargets();
+      const [data, apps] = await Promise.all([
+        trackerService.listTrackingTargets(),
+        applicationService.listApplications(),
+      ]);
       setTargets(data);
+      setApplications(new Map(apps.map((app) => [app.id, app])));
     } catch (e) {
       console.error("Failed to load targets:", e);
     } finally {
@@ -55,7 +63,7 @@ export default function TrackerPage() {
     return () => clearInterval(timer);
   }, [loadTargets, loadAutoCheckStatus]);
 
-  const handleCheckSingle = async (target: TrackingTarget): Promise<boolean> => {
+  const handleCheckSingle = async (target: TrackingTarget, refreshAfter: boolean = true): Promise<boolean> => {
     setChecking((prev) => new Set(prev).add(target.id));
     setResults((prev) => {
       const next = new Map(prev);
@@ -72,6 +80,11 @@ export default function TrackerPage() {
         next.set(target.id, { success: result.success, message: result.message });
         return next;
       });
+      if (refreshAfter) {
+        await loadTargets();
+        await loadAutoCheckStatus();
+        await loadTargetRuns(target.id);
+      }
       return result.success;
     } catch (e) {
       const result = await processSidecarCheckException(target, e);
@@ -80,6 +93,11 @@ export default function TrackerPage() {
         next.set(target.id, { success: false, message: result.message });
         return next;
       });
+      if (refreshAfter) {
+        await loadTargets();
+        await loadAutoCheckStatus();
+        await loadTargetRuns(target.id);
+      }
       return false;
     } finally {
       setChecking((prev) => {
@@ -96,11 +114,13 @@ export default function TrackerPage() {
 
     if (targetsToCheck.length === 0) {
       setResults(new Map([["none", { success: true, message: "没有启用的监控目标" }]]));
+      setSummaryResult({ success: true, message: "没有启用的监控目标" });
       return;
     }
 
     setChecking(new Set(targetsToCheck.map((t) => t.id)));
     setResults(new Map());
+    setSummaryResult(null);
 
     // Group targets by domain for batch checking
     const targetsByDomain = new Map<string, TrackingTarget[]>();
@@ -149,7 +169,7 @@ export default function TrackerPage() {
         } else {
           // Single target - use regular check
           const target = domainTargets[0];
-          const ok = await handleCheckSingle(target);
+          const ok = await handleCheckSingle(target, false);
           if (ok) successCount++;
           else failCount++;
         }
@@ -177,7 +197,32 @@ export default function TrackerPage() {
     }
 
     await notificationService.notifyCheckComplete(successCount, failCount);
+    setSummaryResult({
+      success: failCount === 0,
+      message: `手动检查完成：${successCount} 成功，${failCount} 失败`,
+    });
     await loadTargets();
+    await loadAutoCheckStatus();
+  };
+
+  const handleRunAutoCheck = async () => {
+    setRunningAutoCheck(true);
+    setSummaryResult(null);
+    try {
+      const result = await trackerService.runAutoCheck(true);
+      const message = result.total === 0
+        ? "没有启用的监控目标"
+        : `自动检查完成：检查 ${result.total} 个，${result.success} 成功，${result.failed} 失败，${result.statusChanges} 状态变更${result.loginIssues > 0 ? `，${result.loginIssues} 登录问题` : ""}`;
+      setSummaryResult({ success: result.failed === 0, message });
+      await notificationService.notifyCheckComplete(result.success, result.failed);
+      await loadTargets();
+      await loadAutoCheckStatus();
+    } catch (e) {
+      const message = `自动检查失败: ${e instanceof Error ? e.message : String(e)}`;
+      setSummaryResult({ success: false, message });
+    } finally {
+      setRunningAutoCheck(false);
+    }
   };
 
   const handleOpenLogin = async (target: TrackingTarget) => {
@@ -186,11 +231,19 @@ export default function TrackerPage() {
       const result = await sidecarService.openForLogin(target.status_url, profileDir);
       if (!result.success) {
         console.error("Open login failed:", result.error);
-        alert(`打开登录页面失败: ${result.error}`);
+        setResults(prev => {
+          const next = new Map(prev);
+          next.set(target.id, { success: false, message: result.error || "打开登录页面失败" });
+          return next;
+        });
       }
     } catch (e) {
       console.error("Failed to open login:", e);
-      alert(`打开登录页面失败: ${e}`);
+      setResults(prev => {
+        const next = new Map(prev);
+        next.set(target.id, { success: false, message: `打开登录页面失败: ${e}` });
+        return next;
+      });
     }
   };
 
@@ -255,6 +308,21 @@ export default function TrackerPage() {
     return `${diffHour} 小时后`;
   };
 
+  const invalidLoginTargets = targets.filter((target) =>
+    ["expired", "blocked", "captcha_required", "mfa_required"].includes(target.login_state)
+  ).length;
+  const failedTargets = targets.filter((target) => !!target.last_error).length;
+  const enabledTargets = targets.filter((target) => target.enabled).length;
+
+  const statusLabel = (status?: string | null) =>
+    status ? STATUS_LABELS[status as ApplicationStatus] || status : "-";
+
+  const loginLabel = (state?: string | null) =>
+    state ? LOGIN_STATE_LABELS[state as LoginState] || state : "-";
+
+  const confidenceLabel = (confidence?: number) =>
+    typeof confidence === "number" ? `${Math.round(confidence * 100)}%` : "-";
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -267,7 +335,7 @@ export default function TrackerPage() {
         </div>
         <button
           onClick={handleCheckAll}
-          disabled={checking.size > 0}
+          disabled={checking.size > 0 || runningAutoCheck}
           className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm font-medium hover:bg-stone-800 disabled:opacity-50 transition-all shadow-sm"
         >
           {checking.size > 0 ? (
@@ -279,39 +347,82 @@ export default function TrackerPage() {
         </button>
       </div>
 
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+          <div className="text-xs text-gray-400">启用目标</div>
+          <div className="mt-1 text-2xl font-semibold text-gray-900">{enabledTargets}</div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+          <div className="text-xs text-gray-400">登录待处理</div>
+          <div className={`mt-1 text-2xl font-semibold ${invalidLoginTargets > 0 ? "text-amber-600" : "text-gray-900"}`}>
+            {invalidLoginTargets}
+          </div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+          <div className="text-xs text-gray-400">失败或错误</div>
+          <div className={`mt-1 text-2xl font-semibold ${failedTargets > 0 ? "text-red-600" : "text-gray-900"}`}>
+            {failedTargets}
+          </div>
+        </div>
+        <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+          <div className="text-xs text-gray-400">总目标</div>
+          <div className="mt-1 text-2xl font-semibold text-gray-900">{targets.length}</div>
+        </div>
+      </div>
+
       {/* Auto-check status bar */}
       {autoCheckStatus && (
-        <div className="mb-4 flex items-center gap-4 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm">
-          <div className="flex items-center gap-2">
-            {autoCheckStatus.isRunning ? (
-              <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
-            ) : autoCheckStatus.enabled ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            ) : (
-              <XCircle className="w-4 h-4 text-gray-400" />
+        <div className="mb-4 flex items-center justify-between gap-4 px-4 py-3 bg-white border border-gray-200 rounded-lg text-sm">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              {autoCheckStatus.isRunning || runningAutoCheck ? (
+                <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+              ) : autoCheckStatus.enabled ? (
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              ) : (
+                <XCircle className="w-4 h-4 text-gray-400" />
+              )}
+              <span className="font-medium text-gray-700">
+                自动检查: {autoCheckStatus.isRunning || runningAutoCheck ? "执行中" : autoCheckStatus.enabled ? "已启用" : "已禁用"}
+              </span>
+            </div>
+            {autoCheckStatus.enabled && !autoCheckStatus.isRunning && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-500">
+                  上次: {formatTime(autoCheckStatus.lastRunAt)}
+                </span>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-500">
+                  下次: {formatNextTime(autoCheckStatus.nextRunAt)}
+                </span>
+              </>
             )}
-            <span className="font-medium text-gray-700">
-              自动检查: {autoCheckStatus.isRunning ? "执行中" : autoCheckStatus.enabled ? "已启用" : "已禁用"}
-            </span>
+            {autoCheckStatus.lastResult && (
+              <>
+                <span className="text-gray-300">|</span>
+                <span className="text-gray-500">{autoCheckStatus.lastResult}</span>
+              </>
+            )}
           </div>
-          {autoCheckStatus.enabled && !autoCheckStatus.isRunning && (
-            <>
-              <span className="text-gray-300">|</span>
-              <span className="text-gray-500">
-                上次: {formatTime(autoCheckStatus.lastRunAt)}
-              </span>
-              <span className="text-gray-300">|</span>
-              <span className="text-gray-500">
-                下次: {formatNextTime(autoCheckStatus.nextRunAt)}
-              </span>
-            </>
-          )}
-          {autoCheckStatus.lastResult && (
-            <>
-              <span className="text-gray-300">|</span>
-              <span className="text-gray-500">{autoCheckStatus.lastResult}</span>
-            </>
-          )}
+          <button
+            onClick={handleRunAutoCheck}
+            disabled={runningAutoCheck || checking.size > 0 || autoCheckStatus.isRunning}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${runningAutoCheck ? "animate-spin" : ""}`} />
+            立即自动检查
+          </button>
+        </div>
+      )}
+
+      {summaryResult && (
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+          summaryResult.success
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-red-100 bg-red-50 text-red-700"
+        }`}>
+          {summaryResult.message}
         </div>
       )}
 
@@ -320,6 +431,7 @@ export default function TrackerPage() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
+              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">投递</th>
               <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">状态页</th>
               <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">当前状态</th>
               <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">登录状态</th>
@@ -345,93 +457,169 @@ export default function TrackerPage() {
               targets.map((target) => {
                 const isChecking = checking.has(target.id);
                 const result = results.get(target.id);
+                const app = applications.get(target.application_id);
+                const runs = targetRuns.get(target.id) || [];
                 return (
-                  <tr key={target.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium">{target.domain}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{target.ats_type}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <a
-                        href={target.status_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-stone-700 hover:underline truncate max-w-[200px] block"
-                      >
-                        {target.status_url}
-                      </a>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                          STATUS_COLORS[target.current_status as keyof typeof STATUS_COLORS] || STATUS_COLORS.unknown
-                        }`}
-                      >
-                        {STATUS_LABELS[target.current_status as keyof typeof STATUS_LABELS] || target.current_status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        {getLoginStateIcon(target.login_state)}
+                  <Fragment key={target.id}>
+                    <tr className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-900">
+                          {app?.company_name || target.domain}
+                        </div>
+                        <div className="mt-0.5 max-w-[180px] truncate text-xs text-gray-400">
+                          {app?.job_title || target.ats_type}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <a
+                          href={target.status_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block max-w-[220px] truncate text-sm text-stone-700 hover:underline"
+                        >
+                          {target.status_url}
+                        </a>
+                        <div className="mt-0.5 text-xs text-gray-400">{target.domain}</div>
+                      </td>
+                      <td className="px-4 py-3">
                         <span
-                          className={`text-xs font-medium ${
-                            LOGIN_STATE_COLORS[target.login_state as keyof typeof LOGIN_STATE_COLORS] || ""
+                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                            STATUS_COLORS[target.current_status as keyof typeof STATUS_COLORS] || STATUS_COLORS.unknown
                           }`}
                         >
-                          {LOGIN_STATE_LABELS[target.login_state as keyof typeof LOGIN_STATE_LABELS] || target.login_state}
+                          {STATUS_LABELS[target.current_status as keyof typeof STATUS_LABELS] || target.current_status}
                         </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {target.check_frequency === "manual" ? "手动" :
-                       target.check_frequency === "daily" ? "每天" :
-                       target.check_frequency === "every_12h" ? "每12小时" :
-                       target.check_frequency === "every_6h" ? "每6小时" :
-                       target.check_frequency}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {target.last_checked_at
-                        ? new Date(target.last_checked_at).toLocaleString("zh-CN")
-                        : "从未检查"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => toggleExpand(target.id)}
-                          className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors"
-                          title="查看历史"
-                        >
-                          <History className="w-3 h-3" />
-                          {expandedTarget === target.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </button>
-                        <button
-                          onClick={() => handleOpenLogin(target)}
-                          className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors"
-                          title="打开登录"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          登录
-                        </button>
-                        <button
-                          onClick={() => handleCheckSingle(target)}
-                          disabled={isChecking}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-50 rounded-md hover:bg-stone-100 disabled:opacity-50 transition-colors"
-                        >
-                          {isChecking ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Play className="w-3 h-3" />
-                          )}
-                          {isChecking ? "检查中" : "检查"}
-                        </button>
-                      </div>
-                      {result && (
-                        <div className={`text-xs mt-1 ${result.success ? "text-green-600" : "text-red-600"}`}>
-                          {result.message}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          {getLoginStateIcon(target.login_state)}
+                          <span
+                            className={`text-xs font-medium ${
+                              LOGIN_STATE_COLORS[target.login_state as keyof typeof LOGIN_STATE_COLORS] || ""
+                            }`}
+                          >
+                            {LOGIN_STATE_LABELS[target.login_state as keyof typeof LOGIN_STATE_LABELS] || target.login_state}
+                          </span>
                         </div>
-                      )}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {target.check_frequency === "manual" ? "手动" :
+                         target.check_frequency === "daily" ? "每天" :
+                         target.check_frequency === "every_12h" ? "每12小时" :
+                         target.check_frequency === "every_6h" ? "每6小时" :
+                         target.check_frequency}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {target.last_checked_at
+                          ? new Date(target.last_checked_at).toLocaleString("zh-CN")
+                          : "从未检查"}
+                        {target.last_error && (
+                          <div className="mt-0.5 max-w-[180px] truncate text-xs text-red-500">
+                            {target.last_error}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => toggleExpand(target.id)}
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors"
+                            title="查看历史"
+                          >
+                            <History className="w-3 h-3" />
+                            {expandedTarget === target.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                          <button
+                            onClick={() => handleOpenLogin(target)}
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors"
+                            title="打开登录"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            登录
+                          </button>
+                          <button
+                            onClick={() => handleCheckSingle(target)}
+                            disabled={isChecking || runningAutoCheck}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-50 rounded-md hover:bg-stone-100 disabled:opacity-50 transition-colors"
+                          >
+                            {isChecking ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Play className="w-3 h-3" />
+                            )}
+                            {isChecking ? "检查中" : "检查"}
+                          </button>
+                        </div>
+                        {result && (
+                          <div className={`text-xs mt-1 ${result.success ? "text-green-600" : "text-red-600"}`}>
+                            {result.message}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {expandedTarget === target.id && (
+                      <tr className="border-b border-gray-100 bg-stone-50/60">
+                        <td colSpan={7} className="px-5 py-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div className="text-xs font-semibold text-gray-500">最近检查历史</div>
+                            <button
+                              onClick={() => loadTargetRuns(target.id)}
+                              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-white hover:text-stone-700"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              刷新
+                            </button>
+                          </div>
+                          {runs.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-gray-200 bg-white px-4 py-5 text-center text-sm text-gray-400">
+                              暂无检查历史
+                            </div>
+                          ) : (
+                            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+                              <table className="w-full">
+                                <thead>
+                                  <tr className="border-b border-gray-100 bg-gray-50">
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">时间</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">结果</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">登录</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">识别状态</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">置信度</th>
+                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">说明</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {runs.slice(0, 6).map((run) => (
+                                    <tr key={run.id} className="border-b border-gray-50 last:border-0">
+                                      <td className="px-3 py-2 text-xs text-gray-500">
+                                        {new Date(run.created_at).toLocaleString("zh-CN")}
+                                      </td>
+                                      <td className="px-3 py-2">
+                                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                          run.status === "success"
+                                            ? "bg-emerald-50 text-emerald-700"
+                                            : run.status === "login_expired"
+                                              ? "bg-amber-50 text-amber-700"
+                                              : "bg-red-50 text-red-700"
+                                        }`}>
+                                          {run.status === "success" ? "成功" : run.status === "login_expired" ? "登录问题" : "失败"}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 text-xs text-gray-500">{loginLabel(run.login_state)}</td>
+                                      <td className="px-3 py-2 text-xs text-gray-500">{statusLabel(run.normalized_status)}</td>
+                                      <td className="px-3 py-2 text-xs text-gray-500">{confidenceLabel(run.confidence)}</td>
+                                      <td className="max-w-[260px] truncate px-3 py-2 text-xs text-gray-500">
+                                        {run.error_message || run.raw_status || (run.ai_used ? "AI 已解析" : "页面已读取")}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 );
               })
             )}

@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [appDataDir, setAppDataDir] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<{ ok: boolean; msg: string } | null>(null);
   const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -34,6 +35,7 @@ export default function SettingsPage() {
     setSettings((s) => ({ ...s, ...updates }));
     setDirty(true);
     setTestResult(null);
+    setSettingsMessage(null);
   };
 
   const handleSave = async () => {
@@ -236,7 +238,7 @@ export default function SettingsPage() {
       if (!granted) {
         const result = await requestPermission();
         if (result !== "granted") {
-          alert("通知权限被拒绝，请在系统设置中允许通知");
+          setSettingsMessage({ ok: false, msg: "通知权限被拒绝，请在系统设置中允许通知" });
           return;
         }
       }
@@ -480,6 +482,11 @@ export default function SettingsPage() {
         )}
         {dirty && !saved && (
           <span className="text-sm text-gray-400">有未保存的更改</span>
+        )}
+        {settingsMessage && (
+          <span className={`text-sm ${settingsMessage.ok ? "text-green-600" : "text-red-500"}`}>
+            {settingsMessage.msg}
+          </span>
         )}
       </div>
     </div>
