@@ -336,13 +336,22 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
     try {
       await applicationService.updateApplication(applicationId, { status: newStatus });
       setApp((prev) => (prev ? { ...prev, status: newStatus } : prev));
-      await eventService.createEvent({
-        application_id: applicationId,
-        event_type: "status_change",
-        title: "手动修改状态",
-        old_status: oldStatus,
-        new_status: newStatus,
-      });
+      try {
+        await eventService.createEvent({
+          application_id: applicationId,
+          event_type: "status_change",
+          title: "手动修改状态",
+          old_status: oldStatus,
+          new_status: newStatus,
+        });
+        setNotice({ success: true, message: "状态已更新" });
+      } catch (eventError) {
+        console.error("Failed to record status change event:", eventError);
+        setNotice({
+          success: false,
+          message: `状态已更新，但事件记录失败: ${eventError instanceof Error ? eventError.message : String(eventError)}`,
+        });
+      }
       await loadData();
     } catch (e) {
       console.error("Failed to update status:", e);

@@ -152,15 +152,23 @@ export default function KanbanPage({ onSelectApp }: Props) {
 
     try {
       await applicationService.updateApplication(draggedId, { status: newStatus });
+      setNotice({ success: true, message: "状态已更新" });
 
-      // Create event for status change
-      await eventService.createEvent({
-        application_id: draggedId,
-        event_type: "status_change",
-        title: "看板拖拽修改状态",
-        old_status: oldStatus,
-        new_status: newStatus,
-      });
+      try {
+        await eventService.createEvent({
+          application_id: draggedId,
+          event_type: "status_change",
+          title: "看板拖拽修改状态",
+          old_status: oldStatus,
+          new_status: newStatus,
+        });
+      } catch (eventError) {
+        console.error("Failed to record status change event:", eventError);
+        setNotice({
+          success: false,
+          message: `状态已更新，但事件记录失败: ${eventError instanceof Error ? eventError.message : String(eventError)}`,
+        });
+      }
     } catch (e) {
       console.error("Failed to update status:", e);
       // Rollback on failure

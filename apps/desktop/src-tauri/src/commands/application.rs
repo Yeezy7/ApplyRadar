@@ -44,16 +44,62 @@ pub struct CreateApplicationInput {
 pub struct UpdateApplicationInput {
     pub company_name: Option<String>,
     pub job_title: Option<String>,
-    pub location: Option<String>,
-    pub salary_range: Option<String>,
-    pub job_url: Option<String>,
-    pub status_url: Option<String>,
-    pub source: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub location: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub salary_range: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub job_url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub status_url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub source: Option<Option<String>>,
     pub status: Option<String>,
     pub priority: Option<String>,
-    pub applied_at: Option<String>,
-    pub deadline_at: Option<String>,
-    pub notes: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub applied_at: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub deadline_at: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_string")]
+    pub notes: Option<Option<String>>,
+}
+
+fn deserialize_nullable_string<'de, D>(deserializer: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct NullableStringVisitor;
+
+    impl<'de> serde::de::Visitor<'de> for NullableStringVisitor {
+        type Value = Option<Option<String>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string, null, or an omitted field")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(None))
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: serde::de::Error,
+        {
+            Ok(Some(None))
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            String::deserialize(deserializer).map(|value| Some(Some(value)))
+        }
+    }
+
+    deserializer.deserialize_option(NullableStringVisitor)
 }
 
 #[command]
@@ -166,9 +212,18 @@ pub async fn update_application(
     };
 
     let mut sets = vec!["updated_at = ?".to_string()];
-    let mut values: Vec<String> = vec![now];
+    let mut values: Vec<Option<String>> = vec![Some(now)];
 
     macro_rules! add_field {
+        ($field:ident, $col:expr) => {
+            if let Some(v) = input.$field {
+                sets.push(format!("{} = ?", $col));
+                values.push(Some(v));
+            }
+        };
+    }
+
+    macro_rules! add_nullable_field {
         ($field:ident, $col:expr) => {
             if let Some(v) = input.$field {
                 sets.push(format!("{} = ?", $col));
@@ -179,16 +234,16 @@ pub async fn update_application(
 
     add_field!(company_name, "company_name");
     add_field!(job_title, "job_title");
-    add_field!(location, "location");
-    add_field!(salary_range, "salary_range");
-    add_field!(job_url, "job_url");
-    add_field!(status_url, "status_url");
-    add_field!(source, "source");
+    add_nullable_field!(location, "location");
+    add_nullable_field!(salary_range, "salary_range");
+    add_nullable_field!(job_url, "job_url");
+    add_nullable_field!(status_url, "status_url");
+    add_nullable_field!(source, "source");
     add_field!(status, "status");
     add_field!(priority, "priority");
-    add_field!(applied_at, "applied_at");
-    add_field!(deadline_at, "deadline_at");
-    add_field!(notes, "notes");
+    add_nullable_field!(applied_at, "applied_at");
+    add_nullable_field!(deadline_at, "deadline_at");
+    add_nullable_field!(notes, "notes");
 
     let sql = format!("UPDATE applications SET {} WHERE id = ?", sets.join(", "));
     let mut query = sqlx::query(&sql);

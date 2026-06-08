@@ -19,16 +19,16 @@ export interface CreateApplicationInput {
 export interface UpdateApplicationInput {
   company_name?: string;
   job_title?: string;
-  location?: string;
-  salary_range?: string;
-  job_url?: string;
-  status_url?: string;
-  source?: string;
+  location?: string | null;
+  salary_range?: string | null;
+  job_url?: string | null;
+  status_url?: string | null;
+  source?: string | null;
   status?: string;
   priority?: string;
-  applied_at?: string;
-  deadline_at?: string;
-  notes?: string;
+  applied_at?: string | null;
+  deadline_at?: string | null;
+  notes?: string | null;
 }
 
 export async function createApplication(input: CreateApplicationInput): Promise<Application> {

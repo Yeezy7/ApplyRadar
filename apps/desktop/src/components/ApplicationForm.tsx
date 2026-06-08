@@ -93,18 +93,20 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
     setSaving(true);
     setFormError("");
     try {
-      const input = {
-        ...form,
-        applied_at: form.applied_at || undefined,
-        location: form.location || undefined,
-        salary_range: form.salary_range || undefined,
-        job_url: form.job_url || undefined,
-        status_url: form.status_url || undefined,
-        notes: form.notes || undefined,
-      };
-
+      const optionalText = (value: string) => value.trim() || undefined;
+      const nullableText = (value: string) => value.trim() || null;
+      const warnings: string[] = [];
       let savedApp: Application;
       if (application) {
+        const input = {
+          ...form,
+          applied_at: nullableText(form.applied_at),
+          location: nullableText(form.location),
+          salary_range: nullableText(form.salary_range),
+          job_url: nullableText(form.job_url),
+          status_url: nullableText(form.status_url),
+          notes: nullableText(form.notes),
+        };
         savedApp = await applicationService.updateApplication(application.id, input);
 
         // Create event if status changed manually
@@ -117,14 +119,25 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
               old_status: application.status,
               new_status: form.status,
             });
-          } catch {}
+          } catch (eventError) {
+            console.error("Failed to record status change event:", eventError);
+            warnings.push(`状态事件记录失败: ${eventError instanceof Error ? eventError.message : String(eventError)}`);
+          }
         }
       } else {
+        const input = {
+          ...form,
+          applied_at: optionalText(form.applied_at),
+          location: optionalText(form.location),
+          salary_range: optionalText(form.salary_range),
+          job_url: optionalText(form.job_url),
+          status_url: optionalText(form.status_url),
+          notes: optionalText(form.notes),
+        };
         savedApp = await applicationService.createApplication(input);
       }
 
       // Auto-create or update tracking target if status_url changed
-      let syncWarning = "";
       try {
         const existingTargets = await trackerService.listTrackingTargets(savedApp.id);
         const newUrl = form.status_url?.trim();
@@ -171,12 +184,15 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
         }
       } catch (err) {
         console.error("Failed to sync tracking target:", err);
-        syncWarning = `求职记录已保存，但监控目标同步失败: ${err instanceof Error ? err.message : String(err)}`;
+        warnings.push(`监控目标同步失败: ${err instanceof Error ? err.message : String(err)}`);
       }
 
+      const warningText = warnings.join("；");
       onSaved?.({
-        success: !syncWarning,
-        message: syncWarning || (application ? "求职记录已保存" : "求职记录已创建"),
+        success: warnings.length === 0,
+        message: warningText
+          ? `求职记录已保存，但${warningText}`
+          : application ? "求职记录已保存" : "求职记录已创建",
       });
       onClose();
     } catch (e) {
