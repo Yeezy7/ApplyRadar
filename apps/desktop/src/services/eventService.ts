@@ -8,6 +8,8 @@ export interface CreateEventInput {
   content?: string;
   old_status?: string;
   new_status?: string;
+  handled_at?: string;
+  handled_action?: "accepted" | "dismissed";
 }
 
 export async function createEvent(input: CreateEventInput): Promise<ApplicationEvent> {
@@ -16,4 +18,11 @@ export async function createEvent(input: CreateEventInput): Promise<ApplicationE
 
 export async function listEventsByApplication(applicationId: string): Promise<ApplicationEvent[]> {
   return invoke("list_events_by_application", { applicationId });
+}
+
+export async function resolveApplicationEvent(
+  eventId: string,
+  action: "accepted" | "dismissed"
+): Promise<ApplicationEvent> {
+  return invoke("resolve_application_event", { eventId, input: { action } });
 }

@@ -2,11 +2,15 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use tauri::command;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::Mutex;
 
 use crate::AppState;
 use super::ai;
 use super::settings;
 use super::sidecar;
+
+static AUTO_CHECK_MUTEX: Mutex<()> = Mutex::const_new(());
+const AUTO_CHECK_STALE_AFTER_HOURS: i64 = 12;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TrackingTarget {
@@ -466,7 +470,7 @@ async fn create_event_inner(pool: &SqlitePool, input: &super::event::CreateEvent
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query(
-        "INSERT INTO application_events (id, application_id, event_type, title, content, old_status, new_status, event_time, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO application_events (id, application_id, event_type, title, content, old_status, new_status, handled_at, handled_action, event_time, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&id)
     .bind(&input.application_id)
@@ -475,6 +479,8 @@ async fn create_event_inner(pool: &SqlitePool, input: &super::event::CreateEvent
     .bind(&input.content)
     .bind(&input.old_status)
     .bind(&input.new_status)
+    .bind(&input.handled_at)
+    .bind(&input.handled_action)
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -482,6 +488,40 @@ async fn create_event_inner(pool: &SqlitePool, input: &super::event::CreateEvent
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+async fn create_pending_status_event_if_missing(
+    pool: &SqlitePool,
+    application_id: &str,
+    title: &str,
+    content: String,
+    new_status: &str,
+) -> Result<bool, String> {
+    let existing = sqlx::query_scalar::<_, String>(
+        "SELECT id FROM application_events WHERE application_id = ? AND event_type = 'note_added' AND new_status = ? AND handled_at IS NULL LIMIT 1"
+    )
+    .bind(application_id)
+    .bind(new_status)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if existing.is_some() {
+        return Ok(false);
+    }
+
+    create_event_inner(pool, &super::event::CreateEventInput {
+        application_id: application_id.to_string(),
+        event_type: "note_added".to_string(),
+        title: title.to_string(),
+        content: Some(content),
+        old_status: None,
+        new_status: Some(new_status.to_string()),
+        handled_at: None,
+        handled_action: None,
+    }).await?;
+
+    Ok(true)
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -540,6 +580,48 @@ pub struct AutoCheckResult {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct ManualCheckItem {
+    pub target_id: String,
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualCheckResult {
+    pub total: usize,
+    pub success: usize,
+    pub failed: usize,
+    pub status_changes: usize,
+    pub login_issues: usize,
+    pub items: Vec<ManualCheckItem>,
+}
+
+impl ManualCheckResult {
+    fn empty() -> Self {
+        Self {
+            total: 0,
+            success: 0,
+            failed: 0,
+            status_changes: 0,
+            login_issues: 0,
+            items: Vec::new(),
+        }
+    }
+
+    fn to_auto_check_result(&self) -> AutoCheckResult {
+        AutoCheckResult {
+            total: self.total,
+            success: self.success,
+            failed: self.failed,
+            status_changes: self.status_changes,
+            login_issues: self.login_issues,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AutoCheckStatus {
     pub enabled: bool,
     pub last_run_at: Option<String>,
@@ -554,7 +636,7 @@ pub async fn run_auto_check(
     state: State<'_, AppState>,
     force: Option<bool>,
 ) -> Result<AutoCheckResult, String> {
-    run_auto_check_inner(&app_handle, &state.db, force.unwrap_or(false)).await
+    run_auto_check_with_status(&app_handle, &state.db, force.unwrap_or(false)).await
 }
 
 #[command]
@@ -563,9 +645,7 @@ pub async fn get_auto_check_status(state: State<'_, AppState>) -> Result<AutoChe
     let enabled = settings::is_auto_check_enabled(pool).await;
     let last_run_at = settings::get_setting_raw(pool, "auto_check_last_run_at").await;
     let last_result = settings::get_setting_raw(pool, "auto_check_last_result").await;
-    let is_running = settings::get_setting_raw(pool, "auto_check_is_running").await
-        .map(|v| v == "true")
-        .unwrap_or(false);
+    let is_running = normalize_auto_check_running_state(pool).await;
 
     // Calculate next run time based on shortest target frequency
     let interval_secs = calculate_check_interval_from_db(pool).await;
@@ -582,6 +662,24 @@ pub async fn get_auto_check_status(state: State<'_, AppState>) -> Result<AutoChe
         last_result,
         is_running,
     })
+}
+
+#[command]
+pub async fn run_tracking_target_check(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    target_id: String,
+) -> Result<ManualCheckResult, String> {
+    run_manual_check_with_guard(&app_handle, &state.db, Some(vec![target_id])).await
+}
+
+#[command]
+pub async fn run_tracking_targets_check(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    target_ids: Option<Vec<String>>,
+) -> Result<ManualCheckResult, String> {
+    run_manual_check_with_guard(&app_handle, &state.db, target_ids).await
 }
 
 async fn calculate_check_interval_from_db(pool: &SqlitePool) -> u64 {
@@ -608,6 +706,148 @@ async fn calculate_check_interval_from_db(pool: &SqlitePool) -> u64 {
     }
 }
 
+pub fn format_auto_check_result(result: &AutoCheckResult) -> String {
+    if result.total == 0 {
+        return "无待检查目标".to_string();
+    }
+
+    let mut parts = vec![
+        format!("检查{}个", result.total),
+        format!("{}成功", result.success),
+        format!("{}失败", result.failed),
+        format!("{}状态变更", result.status_changes),
+    ];
+    if result.login_issues > 0 {
+        parts.push(format!("{}登录问题", result.login_issues));
+    }
+    parts.join("，")
+}
+
+async fn normalize_auto_check_running_state(pool: &SqlitePool) -> bool {
+    let is_running = settings::get_setting_raw(pool, "auto_check_is_running").await
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if !is_running {
+        return false;
+    }
+
+    let Some(started_at) = settings::get_setting_raw(pool, "auto_check_started_at").await else {
+        let _ = settings::save_setting_raw(pool, "auto_check_is_running", "false").await;
+        return false;
+    };
+
+    let Ok(started_at) = chrono::DateTime::parse_from_rfc3339(&started_at)
+        .map(|dt| dt.with_timezone(&chrono::Utc))
+    else {
+        let _ = settings::save_setting_raw(pool, "auto_check_is_running", "false").await;
+        return false;
+    };
+
+    let age = chrono::Utc::now().signed_duration_since(started_at);
+    if age > chrono::Duration::hours(AUTO_CHECK_STALE_AFTER_HOURS) {
+        let _ = settings::save_setting_raw(pool, "auto_check_is_running", "false").await;
+        let _ = settings::save_setting_raw(
+            pool,
+            "auto_check_last_result",
+            "上次检查异常中断，运行锁已自动恢复"
+        ).await;
+        return false;
+    }
+
+    true
+}
+
+pub async fn run_auto_check_with_status(
+    app_handle: &AppHandle,
+    pool: &SqlitePool,
+    force: bool,
+) -> Result<AutoCheckResult, String> {
+    let _guard = AUTO_CHECK_MUTEX
+        .try_lock()
+        .map_err(|_| "自动检查正在进行中".to_string())?;
+
+    if normalize_auto_check_running_state(pool).await {
+        return Err("自动检查正在进行中".to_string());
+    }
+
+    let started_at = chrono::Utc::now().to_rfc3339();
+    settings::save_setting_raw(pool, "auto_check_started_at", &started_at).await?;
+    settings::save_setting_raw(pool, "auto_check_is_running", "true").await?;
+
+    let result = run_auto_check_inner(app_handle, pool, force).await;
+    let now = chrono::Utc::now().to_rfc3339();
+    let _ = settings::save_setting_raw(pool, "auto_check_last_run_at", &now).await;
+    let _ = settings::save_setting_raw(pool, "auto_check_is_running", "false").await;
+
+    match result {
+        Ok(result) => {
+            let result_str = format_auto_check_result(&result);
+            let _ = settings::save_setting_raw(pool, "auto_check_last_result", &result_str).await;
+            if result.total > 0 {
+                let _ = app_handle.emit("auto-check:notify", serde_json::json!({
+                    "type": "summary",
+                    "title": "检查完成",
+                    "body": result_str,
+                    "targetId": null,
+                    "applicationId": null
+                }));
+            }
+            Ok(result)
+        }
+        Err(e) => {
+            let result_str = format!("错误: {}", e);
+            let _ = settings::save_setting_raw(pool, "auto_check_last_result", &result_str).await;
+            let _ = app_handle.emit("auto-check:notify", serde_json::json!({
+                "type": "check_failed",
+                "title": "自动检查失败",
+                "body": result_str,
+                "targetId": null,
+                "applicationId": null
+            }));
+            Err(e)
+        }
+    }
+}
+
+async fn run_manual_check_with_guard(
+    app_handle: &AppHandle,
+    pool: &SqlitePool,
+    target_ids: Option<Vec<String>>,
+) -> Result<ManualCheckResult, String> {
+    let _guard = AUTO_CHECK_MUTEX
+        .try_lock()
+        .map_err(|_| "自动检查正在进行中".to_string())?;
+
+    if normalize_auto_check_running_state(pool).await {
+        return Err("自动检查正在进行中".to_string());
+    }
+
+    let targets = if let Some(ids) = target_ids {
+        let mut targets = Vec::new();
+        for id in ids {
+            if let Some(target) = sqlx::query_as::<_, TrackingTarget>(
+                "SELECT * FROM tracking_targets WHERE id = ? AND enabled = 1"
+            )
+            .bind(&id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())? {
+                targets.push(target);
+            }
+        }
+        targets
+    } else {
+        sqlx::query_as::<_, TrackingTarget>(
+            "SELECT * FROM tracking_targets WHERE enabled = 1 ORDER BY created_at DESC"
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    };
+
+    run_checks_for_targets(app_handle, pool, targets, false, false, "manual_check").await
+}
+
 // Inner helper: same logic as run_auto_check but takes pool directly
 pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, force: bool) -> Result<AutoCheckResult, String> {
     // Get targets that need checking
@@ -623,20 +863,29 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
         get_targets_needing_check_inner(pool).await?
     };
 
+    let result = run_checks_for_targets(app_handle, pool, targets, true, true, "auto_check").await?;
+    println!("[auto_check] Complete: {} total, {} success, {} failed, {} status changes, {} login issues",
+        result.total, result.success, result.failed, result.status_changes, result.login_issues);
+
+    Ok(result.to_auto_check_result())
+}
+
+async fn run_checks_for_targets(
+    app_handle: &AppHandle,
+    pool: &SqlitePool,
+    targets: Vec<TrackingTarget>,
+    skip_domain_on_login_issue: bool,
+    delay_between_targets: bool,
+    log_prefix: &str,
+) -> Result<ManualCheckResult, String> {
     if targets.is_empty() {
-        return Ok(AutoCheckResult {
-            total: 0,
-            success: 0,
-            failed: 0,
-            status_changes: 0,
-            login_issues: 0,
-        });
+        return Ok(ManualCheckResult::empty());
     }
 
-    let mut success_count = 0;
-    let mut failed_count = 0;
-    let mut status_changes = 0;
-    let mut login_issues = 0;
+    let mut result = ManualCheckResult {
+        total: targets.len(),
+        ..ManualCheckResult::empty()
+    };
 
     // Track domains with login issues to skip remaining targets
     let mut domains_with_login_issues: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -649,12 +898,20 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
 
     for (domain, domain_targets) in &by_domain {
         // Skip domain if login issue was detected
-        if domains_with_login_issues.contains(domain) {
-            println!("[auto_check] Skipping domain {} due to login issue", domain);
+        if skip_domain_on_login_issue && domains_with_login_issues.contains(domain) {
+            println!("[{}] Skipping domain {} due to login issue", log_prefix, domain);
+            for target in domain_targets {
+                result.failed += 1;
+                result.items.push(ManualCheckItem {
+                    target_id: target.id.clone(),
+                    success: false,
+                    message: format!("{} 登录状态异常，已跳过同域后续检查", domain),
+                });
+            }
             continue;
         }
 
-        println!("[auto_check] Checking domain: {} ({} targets)", domain, domain_targets.len());
+        println!("[{}] Checking domain: {} ({} targets)", log_prefix, domain, domain_targets.len());
 
         // Check each target sequentially with delay between domains
         for target in domain_targets {
@@ -672,7 +929,7 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                     Err(e) => {
                         last_error = e;
                         if attempt < 2 {
-                            println!("[auto_check] Retry {} for {}: {}", attempt, target.id, last_error);
+                            println!("[{}] Retry {} for {}: {}", log_prefix, attempt, target.id, last_error);
                             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                         }
                     }
@@ -682,8 +939,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
             let res = match res {
                 Some(r) => r,
                 None => {
-                    println!("[auto_check] Sidecar error for {}: {}", target.id, last_error);
-                    failed_count += 1;
+                    println!("[{}] Sidecar error for {}: {}", log_prefix, target.id, last_error);
+                    result.failed += 1;
                     let now = chrono::Utc::now().to_rfc3339();
 
                     // Record failed run
@@ -721,6 +978,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                         content: Some(last_error.clone()),
                         old_status: None,
                         new_status: None,
+                        handled_at: None,
+                        handled_action: None,
                     }).await;
 
                     let body = if let Some(app) = get_application_summary(pool, &target.application_id).await {
@@ -736,12 +995,18 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                         application_id: Some(target.application_id.clone()),
                     });
 
+                    result.items.push(ManualCheckItem {
+                        target_id: target.id.clone(),
+                        success: false,
+                        message: last_error,
+                    });
+
                     continue;
                 }
             };
 
             if !res.success {
-                failed_count += 1;
+                result.failed += 1;
                 let now = chrono::Utc::now().to_rfc3339();
                 let error_message = res.error.clone().unwrap_or_else(|| "检查失败".to_string());
                 let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
@@ -778,6 +1043,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                     content: Some(error_message.clone()),
                     old_status: None,
                     new_status: None,
+                    handled_at: None,
+                    handled_action: None,
                 }).await;
 
                 let body = if let Some(app) = get_application_summary(pool, &target.application_id).await {
@@ -793,10 +1060,17 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                     application_id: Some(target.application_id.clone()),
                 });
 
+                result.items.push(ManualCheckItem {
+                    target_id: target.id.clone(),
+                    success: false,
+                    message: error_message,
+                });
+
                 continue;
             }
 
             let mut target_failed = false;
+            let mut item_message = "检查完成".to_string();
 
             // Update target basic info
             let now = chrono::Utc::now().to_rfc3339();
@@ -818,11 +1092,12 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
             // Handle login state
             let is_login_valid = res.login_state.as_deref().map_or(true, |s| s == "valid");
             if !is_login_valid {
-                login_issues += 1;
+                result.login_issues += 1;
                 domains_with_login_issues.insert(target.domain.clone());
-                println!("[auto_check] Login issue detected for domain: {}", target.domain);
+                println!("[{}] Login issue detected for domain: {}", log_prefix, target.domain);
                 if let Some(ref login_state) = res.login_state {
-                    update.last_error = Some(format!("登录状态: {}", login_state_label(login_state)));
+                    item_message = format!("登录状态: {}", login_state_label(login_state));
+                    update.last_error = Some(item_message.clone());
 
                     let was_invalid = is_invalid_login_state(Some(target.login_state.as_str()));
                     let changed = target.login_state != *login_state;
@@ -849,6 +1124,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                             content: Some(content.clone()),
                             old_status: None,
                             new_status: None,
+                            handled_at: None,
+                            handled_action: None,
                         }).await;
 
                         emit_auto_check_notify(app_handle, AutoCheckNotify {
@@ -866,20 +1143,101 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
             let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
                 target_id: target.id.clone(),
                 status: if is_login_valid { "success" } else { "login_expired" }.to_string(),
-                raw_status: None,
-                normalized_status: None,
-                confidence: None,
+                raw_status: res.raw_status.clone(),
+                normalized_status: res.normalized_status.clone(),
+                confidence: res.confidence,
                 login_state: res.login_state.clone(),
                 error_message: None,
                 page_hash: res.text_hash.clone(),
                 ai_used: Some(0),
             }).await;
 
-            // Try AI parsing if login is valid and page text exists
-            if is_login_valid && res.page_text.is_some() && {
+            let has_ai_config = {
                 let (api_key, _, _) = settings::get_ai_settings(pool).await;
                 !api_key.is_empty()
-            } {
+            };
+
+            if is_login_valid && !has_ai_config {
+                if let (Some(new_status), Some(confidence)) =
+                    (res.normalized_status.clone(), res.confidence.map(|v| v.clamp(0.0, 1.0)))
+                {
+                    let old_status = &target.current_status;
+                    if confidence >= 0.85 {
+                        update.current_status = Some(new_status.clone());
+                        if old_status != "unknown" {
+                            update.last_status = Some(old_status.clone());
+                        }
+
+                        let _ = sqlx::query(
+                            "UPDATE applications SET status = ?, updated_at = ? WHERE id = ?"
+                        )
+                        .bind(&new_status)
+                        .bind(&now)
+                        .bind(&target.application_id)
+                        .execute(pool)
+                        .await;
+
+                        if old_status != "unknown" && old_status != &new_status {
+                            result.status_changes += 1;
+                            item_message = format!("规则识别状态变更: {} -> {}", old_status, new_status);
+
+                            let _ = create_event_inner(pool, &super::event::CreateEventInput {
+                                application_id: target.application_id.clone(),
+                                event_type: "status_change".to_string(),
+                                title: "规则检测状态变更".to_string(),
+                                content: res.raw_status.clone(),
+                                old_status: Some(old_status.clone()),
+                                new_status: Some(new_status.clone()),
+                                handled_at: None,
+                                handled_action: None,
+                            }).await;
+
+                            let body = if let Some(app) = get_application_summary(pool, &target.application_id).await {
+                                format!("{} - {}: {} -> {}", app.company_name, app.job_title, old_status, new_status)
+                            } else {
+                                format!("{}: {} -> {}", target.domain, old_status, new_status)
+                            };
+                            emit_auto_check_notify(app_handle, AutoCheckNotify {
+                                kind: "status_change".to_string(),
+                                title: "状态变化".to_string(),
+                                body,
+                                target_id: Some(target.id.clone()),
+                                application_id: Some(target.application_id.clone()),
+                            });
+                        } else if old_status == "unknown" {
+                            item_message = format!("规则识别状态: {}", new_status);
+                            let _ = create_event_inner(pool, &super::event::CreateEventInput {
+                                application_id: target.application_id.clone(),
+                                event_type: "status_change".to_string(),
+                                title: "规则识别状态".to_string(),
+                                content: Some(format!("识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32)),
+                                old_status: None,
+                                new_status: Some(new_status.clone()),
+                                handled_at: None,
+                                handled_action: None,
+                            }).await;
+                        } else {
+                            item_message = format!("规则识别状态: {}", new_status);
+                        }
+                    } else if confidence >= 0.60 {
+                        let created = create_pending_status_event_if_missing(
+                            pool,
+                            &target.application_id,
+                            "规则识别待确认",
+                            format!("规则识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32),
+                            &new_status,
+                        ).await.unwrap_or(false);
+                        item_message = if created {
+                            format!("规则识别待确认: {}，置信度 {}%", new_status, (confidence * 100.0) as i32)
+                        } else {
+                            format!("规则识别待确认已存在: {}", new_status)
+                        };
+                    }
+                }
+            }
+
+            // Try AI parsing if login is valid and page text exists
+            if is_login_valid && res.page_text.is_some() && has_ai_config {
                 let page_text = res.page_text.clone().unwrap_or_default();
                 if !page_text.is_empty() {
                     // Get application info for context
@@ -943,7 +1301,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                                 .await;
 
                                 if old_status != "unknown" && old_status != new_status {
-                                    status_changes += 1;
+                                    result.status_changes += 1;
+                                    item_message = format!("状态变更: {} -> {}", old_status, new_status);
 
                                     // Create status change event
                                     let _ = create_event_inner(pool, &super::event::CreateEventInput {
@@ -953,6 +1312,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                                         content: ai_result.reason.clone(),
                                         old_status: Some(old_status.clone()),
                                         new_status: Some(new_status.clone()),
+                                        handled_at: None,
+                                        handled_action: None,
                                     }).await;
 
                                     let body = if let Some(ref app) = app_info {
@@ -968,6 +1329,7 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                                         application_id: Some(target.application_id.clone()),
                                     });
                                 } else if old_status == "unknown" {
+                                    item_message = format!("AI 识别状态: {}", new_status);
                                     // First time detecting status
                                     let _ = create_event_inner(pool, &super::event::CreateEventInput {
                                         application_id: target.application_id.clone(),
@@ -976,25 +1338,31 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                                         content: Some(format!("识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32)),
                                         old_status: None,
                                         new_status: Some(new_status.clone()),
+                                        handled_at: None,
+                                        handled_action: None,
                                     }).await;
                                 }
                             } else if confidence >= 0.60 {
-                                // Low confidence - create pending event
-                                let _ = create_event_inner(pool, &super::event::CreateEventInput {
-                                    application_id: target.application_id.clone(),
-                                    event_type: "note_added".to_string(),
-                                    title: "AI 识别待确认".to_string(),
-                                    content: Some(format!("识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32)),
-                                    old_status: None,
-                                    new_status: Some(new_status.clone()),
-                                }).await;
+                                let created = create_pending_status_event_if_missing(
+                                    pool,
+                                    &target.application_id,
+                                    "AI 识别待确认",
+                                    format!("识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32),
+                                    new_status,
+                                ).await.unwrap_or(false);
+                                item_message = if created {
+                                    format!("AI 识别待确认: {}，置信度 {}%", new_status, (confidence * 100.0) as i32)
+                                } else {
+                                    format!("AI 识别待确认已存在: {}", new_status)
+                                };
                             }
                         }
                     }
                     Err(e) => {
                         target_failed = true;
-                        failed_count += 1;
+                        result.failed += 1;
                         let error_message = e.to_string();
+                        item_message = format!("AI 识别失败: {}", error_message);
                         update.last_error = Some(format!("AI 识别失败: {}", error_message));
 
                         let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
@@ -1016,6 +1384,8 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
                             content: Some(error_message.clone()),
                             old_status: None,
                             new_status: None,
+                            handled_at: None,
+                            handled_action: None,
                         }).await;
                     }
                     }
@@ -1026,29 +1396,30 @@ pub async fn run_auto_check_inner(app_handle: &AppHandle, pool: &SqlitePool, for
             let _ = update_tracking_target_inner(pool, &target.id, &update).await;
 
             if !target_failed {
-                success_count += 1;
+                result.success += 1;
             }
+
+            result.items.push(ManualCheckItem {
+                target_id: target.id.clone(),
+                success: !target_failed,
+                message: item_message,
+            });
 
             if !is_login_valid {
                 break;
             }
 
             // Delay between checks on the same domain
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            if delay_between_targets {
+                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+            }
         }
 
         // Delay between domains
-        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        if delay_between_targets {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
     }
 
-    println!("[auto_check] Complete: {} total, {} success, {} failed, {} status changes, {} login issues",
-        targets.len(), success_count, failed_count, status_changes, login_issues);
-
-    Ok(AutoCheckResult {
-        total: targets.len(),
-        success: success_count,
-        failed: failed_count,
-        status_changes,
-        login_issues,
-    })
+    Ok(result)
 }

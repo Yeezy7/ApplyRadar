@@ -14,6 +14,40 @@ interface BackupData {
   events?: ApplicationEvent[];
 }
 
+const normalizeImportValue = (value?: string | null) => (value || "").trim();
+
+const applicationImportKey = (app: Pick<Application, "company_name" | "job_title" | "status_url" | "job_url" | "applied_at" | "source">) =>
+  [
+    normalizeImportValue(app.company_name).toLowerCase(),
+    normalizeImportValue(app.job_title).toLowerCase(),
+    normalizeImportValue(app.status_url),
+    normalizeImportValue(app.job_url),
+    normalizeImportValue(app.applied_at),
+    normalizeImportValue(app.source),
+  ].join("\u001f");
+
+const targetImportKey = (applicationId: string, statusUrl?: string | null) =>
+  [applicationId, normalizeImportValue(statusUrl)].join("\u001f");
+
+const reminderImportKey = (applicationId: string | undefined, reminder: Pick<Reminder, "title" | "content" | "reminder_type" | "remind_at">) =>
+  [
+    applicationId || "",
+    normalizeImportValue(reminder.title),
+    normalizeImportValue(reminder.content),
+    normalizeImportValue(reminder.reminder_type),
+    normalizeImportValue(reminder.remind_at),
+  ].join("\u001f");
+
+const eventImportKey = (applicationId: string, event: Pick<ApplicationEvent, "event_type" | "title" | "content" | "old_status" | "new_status">) =>
+  [
+    applicationId,
+    normalizeImportValue(event.event_type),
+    normalizeImportValue(event.title),
+    normalizeImportValue(event.content),
+    normalizeImportValue(event.old_status),
+    normalizeImportValue(event.new_status),
+  ].join("\u001f");
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(getSettings);
   const [saved, setSaved] = useState(false);
@@ -43,9 +77,11 @@ export default function SettingsPage() {
       await saveSettings(settings);
       setSaved(true);
       setDirty(false);
+      setSettingsMessage({ ok: true, msg: "设置已保存" });
       setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       console.error("Failed to save settings:", e);
+      setSettingsMessage({ ok: false, msg: `保存设置失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -98,8 +134,11 @@ export default function SettingsPage() {
       a.download = `applyradar-backup-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      setImportResult({ ok: true, msg: "数据已导出" });
+      setTimeout(() => setImportResult(null), 3000);
     } catch (e) {
       console.error("Export failed:", e);
+      setImportResult({ ok: false, msg: `导出失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -116,14 +155,44 @@ export default function SettingsPage() {
         return;
       }
 
+      const existingApps = await applicationService.listApplications();
+      const [existingTargets, existingReminders, existingEvents] = await Promise.all([
+        trackerService.listTrackingTargets(),
+        reminderService.listReminders(undefined, true),
+        Promise.all(existingApps.map((app) => eventService.listEventsByApplication(app.id)))
+          .then((eventsArrays) => eventsArrays.flat()),
+      ]);
+
       const appIdMap = new Map<string, string>();
+      const existingAppByKey = new Map(
+        existingApps.map((app) => [applicationImportKey(app), app])
+      );
+      const existingTargetKeys = new Set(
+        existingTargets.map((target) => targetImportKey(target.application_id, target.status_url))
+      );
+      const existingReminderKeys = new Set(
+        existingReminders.map((reminder) => reminderImportKey(reminder.application_id, reminder))
+      );
+      const existingEventKeys = new Set(
+        existingEvents.map((event) => eventImportKey(event.application_id, event))
+      );
       let appCount = 0;
       let targetCount = 0;
       let reminderCount = 0;
       let eventCount = 0;
+      let skippedCount = 0;
+      let failedCount = 0;
 
       for (const app of data.applications) {
         try {
+          const key = applicationImportKey(app);
+          const existing = existingAppByKey.get(key);
+          if (existing) {
+            appIdMap.set(app.id, existing.id);
+            skippedCount++;
+            continue;
+          }
+
           const created = await applicationService.createApplication({
             company_name: app.company_name,
             job_title: app.job_title,
@@ -139,9 +208,11 @@ export default function SettingsPage() {
             notes: app.notes,
           });
           appIdMap.set(app.id, created.id);
+          existingAppByKey.set(key, created);
           appCount++;
         } catch (e) {
           console.error("Failed to import app:", e);
+          failedCount++;
         }
       }
 
@@ -149,6 +220,11 @@ export default function SettingsPage() {
         try {
           const applicationId = appIdMap.get(target.application_id);
           if (!applicationId || !target.status_url) continue;
+          const key = targetImportKey(applicationId, target.status_url);
+          if (existingTargetKeys.has(key)) {
+            skippedCount++;
+            continue;
+          }
 
           const created = await trackerService.createTrackingTarget({
             application_id: applicationId,
@@ -168,9 +244,11 @@ export default function SettingsPage() {
             last_text_hash: target.last_text_hash,
             profile_dir: target.profile_dir,
           });
+          existingTargetKeys.add(key);
           targetCount++;
         } catch (e) {
           console.error("Failed to import tracking target:", e);
+          failedCount++;
         }
       }
 
@@ -180,6 +258,12 @@ export default function SettingsPage() {
             ? appIdMap.get(reminder.application_id)
             : undefined;
           if (reminder.application_id && !applicationId) continue;
+
+          const key = reminderImportKey(applicationId, reminder);
+          if (existingReminderKeys.has(key)) {
+            skippedCount++;
+            continue;
+          }
 
           const created = await reminderService.createReminder({
             application_id: applicationId,
@@ -192,9 +276,11 @@ export default function SettingsPage() {
           if (reminder.is_done) {
             await reminderService.markReminderDone(created.id);
           }
+          existingReminderKeys.add(key);
           reminderCount++;
         } catch (e) {
           console.error("Failed to import reminder:", e);
+          failedCount++;
         }
       }
 
@@ -203,6 +289,12 @@ export default function SettingsPage() {
           const applicationId = appIdMap.get(event.application_id);
           if (!applicationId) continue;
 
+          const key = eventImportKey(applicationId, event);
+          if (existingEventKeys.has(key)) {
+            skippedCount++;
+            continue;
+          }
+
           await eventService.createEvent({
             application_id: applicationId,
             event_type: event.event_type,
@@ -210,16 +302,20 @@ export default function SettingsPage() {
             content: event.content,
             old_status: event.old_status,
             new_status: event.new_status,
+            handled_at: event.handled_at,
+            handled_action: event.handled_action,
           });
+          existingEventKeys.add(key);
           eventCount++;
         } catch (e) {
           console.error("Failed to import event:", e);
+          failedCount++;
         }
       }
 
       setImportResult({
-        ok: true,
-        msg: `成功导入 ${appCount} 条求职记录、${targetCount} 个监控目标、${reminderCount} 个提醒、${eventCount} 条事件`,
+        ok: failedCount === 0,
+        msg: `成功导入 ${appCount} 条求职记录、${targetCount} 个监控目标、${reminderCount} 个提醒、${eventCount} 条事件${skippedCount ? `，跳过 ${skippedCount} 条已存在数据` : ""}${failedCount ? `，${failedCount} 条失败` : ""}`,
       });
       setTimeout(() => setImportResult(null), 5000);
     } catch (e) {

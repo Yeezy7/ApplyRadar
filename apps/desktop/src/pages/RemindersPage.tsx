@@ -30,6 +30,7 @@ export default function RemindersPage() {
   const [formAppId, setFormAppId] = useState("");
   const [applications, setApplications] = useState<{ id: string; company_name: string; job_title: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadReminders = useCallback(async () => {
     setLoading(true);
@@ -69,12 +70,14 @@ export default function RemindersPage() {
         prev.map((r) => (r.id === id ? { ...r, is_done: 1 } : r))
       );
       await reminderService.markReminderDone(id);
+      setNotice({ success: true, message: "提醒已完成" });
     } catch (e) {
       console.error("Failed to mark reminder done:", e);
       // Rollback
       setReminders((prev) =>
         prev.map((r) => (r.id === id ? { ...r, is_done: 0 } : r))
       );
+      setNotice({ success: false, message: `完成提醒失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -84,8 +87,10 @@ export default function RemindersPage() {
     try {
       setReminders((prev) => prev.filter((r) => r.id !== id));
       await reminderService.deleteReminder(id);
+      setNotice({ success: true, message: "提醒已删除" });
     } catch (e) {
       console.error("Failed to delete reminder:", e);
+      setNotice({ success: false, message: `删除提醒失败: ${e instanceof Error ? e.message : String(e)}` });
       await loadReminders();
     }
   };
@@ -107,9 +112,11 @@ export default function RemindersPage() {
       setFormType("custom");
       setFormRemindAt("");
       setFormAppId("");
+      setNotice({ success: true, message: "提醒已创建" });
       await loadReminders();
     } catch (e) {
       console.error("Failed to create reminder:", e);
+      setNotice({ success: false, message: `创建提醒失败: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setSubmitting(false);
     }
@@ -183,6 +190,16 @@ export default function RemindersPage() {
           新建提醒
         </button>
       </div>
+
+      {notice && (
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+          notice.success
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-red-100 bg-red-50 text-red-700"
+        }`}>
+          {notice.message}
+        </div>
+      )}
 
       {/* Content */}
       {loading ? (

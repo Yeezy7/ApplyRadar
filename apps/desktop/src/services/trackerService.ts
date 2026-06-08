@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { TrackingTarget, TrackingRun } from "@applyradar/shared";
+import type { ManualCheckResult, TrackingTarget, TrackingRun } from "@applyradar/shared";
 
 export interface CreateTrackingTargetInput {
   application_id: string;
@@ -90,4 +90,12 @@ export interface AutoCheckStatus {
 
 export async function getAutoCheckStatus(): Promise<AutoCheckStatus> {
   return invoke("get_auto_check_status");
+}
+
+export async function runTrackingTargetCheck(targetId: string): Promise<ManualCheckResult> {
+  return invoke("run_tracking_target_check", { targetId });
+}
+
+export async function runTrackingTargetsCheck(targetIds?: string[]): Promise<ManualCheckResult> {
+  return invoke("run_tracking_targets_check", { targetIds });
 }

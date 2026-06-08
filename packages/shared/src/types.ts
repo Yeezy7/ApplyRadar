@@ -91,6 +91,8 @@ export interface ApplicationEvent {
   content?: string;
   old_status?: ApplicationStatus;
   new_status?: ApplicationStatus;
+  handled_at?: string;
+  handled_action?: "accepted" | "dismissed";
   event_time: string;
   created_at: string;
 }
@@ -139,6 +141,21 @@ export interface TrackingRun {
   page_hash?: string;
   ai_used: number;
   created_at: string;
+}
+
+export interface ManualCheckItem {
+  targetId: string;
+  success: boolean;
+  message: string;
+}
+
+export interface ManualCheckResult {
+  total: number;
+  success: number;
+  failed: number;
+  statusChanges: number;
+  loginIssues: number;
+  items: ManualCheckItem[];
 }
 
 // === Site Sessions ===

@@ -13,10 +13,6 @@ import {
   notificationService,
   applicationService,
 } from "../services";
-import {
-  processSidecarCheckException,
-  processSidecarCheckResult,
-} from "../services/checkWorkflowService";
 
 export default function TrackerPage() {
   const [targets, setTargets] = useState<TrackingTarget[]>([]);
@@ -41,6 +37,7 @@ export default function TrackerPage() {
       setApplications(new Map(apps.map((app) => [app.id, app])));
     } catch (e) {
       console.error("Failed to load targets:", e);
+      setSummaryResult({ success: false, message: `加载监控目标失败: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setLoading(false);
     }
@@ -52,6 +49,7 @@ export default function TrackerPage() {
       setAutoCheckStatus(status);
     } catch (e) {
       console.error("Failed to load auto-check status:", e);
+      setSummaryResult({ success: false, message: `加载自动检查状态失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   }, []);
 
@@ -72,27 +70,33 @@ export default function TrackerPage() {
     });
 
     try {
-      const profileDir = target.profile_dir || `profiles/${target.domain}`;
-      const res = await sidecarService.runCheck(target.id, target.status_url, profileDir);
-      const result = await processSidecarCheckResult(target, res);
+      const result = await trackerService.runTrackingTargetCheck(target.id);
+      const item = result.items.find((entry) => entry.targetId === target.id);
+      const success = item?.success ?? result.failed === 0;
+      const message = item?.message || (success ? "检查完成" : "检查失败");
       setResults((prev) => {
         const next = new Map(prev);
-        next.set(target.id, { success: result.success, message: result.message });
+        next.set(target.id, { success, message });
         return next;
+      });
+      setSummaryResult({
+        success: result.failed === 0,
+        message: `检查完成：${result.success} 成功，${result.failed} 失败${result.statusChanges > 0 ? `，${result.statusChanges} 状态变更` : ""}${result.loginIssues > 0 ? `，${result.loginIssues} 登录问题` : ""}`,
       });
       if (refreshAfter) {
         await loadTargets();
         await loadAutoCheckStatus();
         await loadTargetRuns(target.id);
       }
-      return result.success;
+      return success;
     } catch (e) {
-      const result = await processSidecarCheckException(target, e);
+      const message = `检查失败: ${e instanceof Error ? e.message : String(e)}`;
       setResults((prev) => {
         const next = new Map(prev);
-        next.set(target.id, { success: false, message: result.message });
+        next.set(target.id, { success: false, message });
         return next;
       });
+      setSummaryResult({ success: false, message });
       if (refreshAfter) {
         await loadTargets();
         await loadAutoCheckStatus();
@@ -122,87 +126,32 @@ export default function TrackerPage() {
     setResults(new Map());
     setSummaryResult(null);
 
-    // Group targets by domain for batch checking
-    const targetsByDomain = new Map<string, TrackingTarget[]>();
-    for (const target of targetsToCheck) {
-      const domain = target.domain;
-      if (!targetsByDomain.has(domain)) {
-        targetsByDomain.set(domain, []);
+    try {
+      const result = await trackerService.runTrackingTargetsCheck(
+        targetsToCheck.map((target) => target.id)
+      );
+      const nextResults = new Map<string, { success: boolean; message: string }>();
+      for (const item of result.items) {
+        nextResults.set(item.targetId, { success: item.success, message: item.message });
       }
-      targetsByDomain.get(domain)!.push(target);
-    }
-
-    let successCount = 0;
-    let failCount = 0;
-
-    // Process each domain as a batch
-    for (const [domain, domainTargets] of targetsByDomain) {
-      const profileDir = domainTargets[0].profile_dir || `profiles/${domain}`;
-
-      try {
-        // Use batch check for multiple targets on same domain
-        if (domainTargets.length > 1) {
-          const batchTargets = domainTargets.map(t => ({
-            targetId: t.id,
-            statusUrl: t.status_url,
-          }));
-
-          const batchResult = await sidecarService.runBatchCheck(domain, profileDir, batchTargets);
-
-          for (const res of batchResult.results) {
-            const target = domainTargets.find(t => t.id === res.targetId);
-            if (!target) continue;
-
-            const result = await processSidecarCheckResult(target, res);
-            setResults(prev => {
-              const next = new Map(prev);
-              next.set(target.id, { success: result.success, message: result.message });
-              return next;
-            });
-
-            if (result.success) {
-              successCount++;
-            } else {
-              failCount++;
-            }
-          }
-        } else {
-          // Single target - use regular check
-          const target = domainTargets[0];
-          const ok = await handleCheckSingle(target, false);
-          if (ok) successCount++;
-          else failCount++;
-        }
-      } catch (e) {
-        console.error(`Batch check failed for domain ${domain}:`, e);
-        for (const target of domainTargets) {
-          const result = await processSidecarCheckException(target, e);
-          setResults(prev => {
-            const next = new Map(prev);
-            next.set(target.id, { success: false, message: result.message });
-            return next;
-          });
-          failCount++;
-        }
-      }
-
-      // Remove completed targets from checking set
-      setChecking(prev => {
-        const next = new Set(prev);
-        for (const t of domainTargets) {
-          next.delete(t.id);
-        }
-        return next;
+      setResults(nextResults);
+      await notificationService.notifyCheckComplete(result.success, result.failed);
+      setSummaryResult({
+        success: result.failed === 0,
+        message: `手动检查完成：${result.success} 成功，${result.failed} 失败${result.statusChanges > 0 ? `，${result.statusChanges} 状态变更` : ""}${result.loginIssues > 0 ? `，${result.loginIssues} 登录问题` : ""}`,
       });
+      await loadTargets();
+      await loadAutoCheckStatus();
+      if (expandedTarget) {
+        await loadTargetRuns(expandedTarget);
+      }
+    } catch (e) {
+      const message = `手动检查失败: ${e instanceof Error ? e.message : String(e)}`;
+      console.error("Manual check failed:", e);
+      setSummaryResult({ success: false, message });
+    } finally {
+      setChecking(new Set());
     }
-
-    await notificationService.notifyCheckComplete(successCount, failCount);
-    setSummaryResult({
-      success: failCount === 0,
-      message: `手动检查完成：${successCount} 成功，${failCount} 失败`,
-    });
-    await loadTargets();
-    await loadAutoCheckStatus();
   };
 
   const handleRunAutoCheck = async () => {
@@ -231,6 +180,7 @@ export default function TrackerPage() {
       const result = await sidecarService.openForLogin(target.status_url, profileDir);
       if (!result.success) {
         console.error("Open login failed:", result.error);
+        setSummaryResult({ success: false, message: result.error || "打开登录页面失败" });
         setResults(prev => {
           const next = new Map(prev);
           next.set(target.id, { success: false, message: result.error || "打开登录页面失败" });
@@ -239,6 +189,7 @@ export default function TrackerPage() {
       }
     } catch (e) {
       console.error("Failed to open login:", e);
+      setSummaryResult({ success: false, message: `打开登录页面失败: ${e instanceof Error ? e.message : String(e)}` });
       setResults(prev => {
         const next = new Map(prev);
         next.set(target.id, { success: false, message: `打开登录页面失败: ${e}` });
@@ -269,6 +220,7 @@ export default function TrackerPage() {
       });
     } catch (e) {
       console.error("Failed to load tracking runs:", e);
+      setSummaryResult({ success: false, message: `加载检查历史失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 

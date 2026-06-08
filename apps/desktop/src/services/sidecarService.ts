@@ -4,6 +4,9 @@ export interface SidecarCheckResponse {
   success: boolean;
   targetId?: string;
   loginState?: string;
+  rawStatus?: string;
+  normalizedStatus?: string;
+  confidence?: number;
   pageText?: string;
   textHash?: string;
   pageTitle?: string;

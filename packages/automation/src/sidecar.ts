@@ -22,6 +22,9 @@ interface CheckResponse {
   success: boolean;
   targetId?: string;
   loginState?: string;
+  rawStatus?: string;
+  normalizedStatus?: string;
+  confidence?: number;
   pageText?: string;
   textHash?: string;
   pageTitle?: string;
@@ -74,15 +77,227 @@ function detectLoginState(url: string, text: string): string {
   const lowerUrl = url.toLowerCase();
   const lowerText = text.toLowerCase();
 
-  if (lowerUrl.includes("login") || lowerUrl.includes("signin") || lowerUrl.includes("auth")) {
-    return "expired";
-  } else if (lowerText.includes("captcha") || lowerText.includes("recaptcha")) {
+  const hasAny = (patterns: Array<string | RegExp>) =>
+    patterns.some((pattern) =>
+      typeof pattern === "string" ? lowerText.includes(pattern) : pattern.test(lowerText)
+    );
+
+  if (hasAny([
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "verify you are human",
+    "security check",
+    "验证码",
+    "人机验证",
+    "安全验证",
+    "滑块验证",
+  ])) {
     return "captcha_required";
-  } else if (lowerText.includes("two-factor") || lowerText.includes("2fa")) {
+  }
+
+  if (hasAny([
+    "two-factor",
+    "two factor",
+    "2fa",
+    "mfa",
+    "multi-factor",
+    "verification code",
+    "authenticator",
+    "二次验证",
+    "两步验证",
+    "多因素验证",
+    "动态验证码",
+  ])) {
     return "mfa_required";
   }
 
+  if (hasAny([
+    "account locked",
+    "account disabled",
+    "account suspended",
+    "blocked account",
+    "账户已锁定",
+    "账号已锁定",
+    "账户被禁用",
+    "账号被禁用",
+    "账号异常",
+  ])) {
+    return "blocked";
+  }
+
+  if (
+    lowerUrl.includes("login") ||
+    lowerUrl.includes("signin") ||
+    lowerUrl.includes("auth") ||
+    lowerUrl.includes("sso") ||
+    hasAny([
+      "sign in",
+      "log in",
+      "login",
+      "email address",
+      "password",
+      "forgot password",
+      "session expired",
+      "please authenticate",
+      "please sign in",
+      "登录",
+      "登陆",
+      "请输入密码",
+      "忘记密码",
+      "会话已过期",
+      "请先登录",
+      "重新登录",
+    ])
+  ) {
+    return "expired";
+  }
+
   return "valid";
+}
+
+function extractStatusFromText(text: string): { rawStatus: string; normalizedStatus: string; confidence: number } | null {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  const lowerText = normalizedText.toLowerCase();
+
+  const rules: Array<{ status: string; confidence: number; patterns: Array<string | RegExp> }> = [
+    {
+      status: "offer",
+      confidence: 0.86,
+      patterns: [
+        "offer extended",
+        "offer letter",
+        "congratulations",
+        "we would like to offer",
+        "录用",
+        "已发 offer",
+        "offer",
+        "恭喜",
+      ],
+    },
+    {
+      status: "rejected",
+      confidence: 0.9,
+      patterns: [
+        "not selected",
+        "not moving forward",
+        "no longer under consideration",
+        "unsuccessful",
+        "rejected",
+        "declined",
+        "很遗憾",
+        "未通过",
+        "不匹配",
+        "已拒绝",
+        "未被录用",
+      ],
+    },
+    {
+      status: "final_interview",
+      confidence: 0.78,
+      patterns: [
+        "final interview",
+        "final round",
+        "onsite interview",
+        "终面",
+        "最终面试",
+      ],
+    },
+    {
+      status: "interview",
+      confidence: 0.82,
+      patterns: [
+        "interview",
+        "schedule a call",
+        "phone screen",
+        "面试",
+        "约面",
+        "视频面",
+        "电话面",
+      ],
+    },
+    {
+      status: "assessment",
+      confidence: 0.82,
+      patterns: [
+        "assessment",
+        "coding challenge",
+        "take home",
+        "online test",
+        "测评",
+        "笔试",
+        "在线测试",
+        "作业",
+      ],
+    },
+    {
+      status: "under_review",
+      confidence: 0.8,
+      patterns: [
+        "under review",
+        "in review",
+        "reviewing",
+        "being reviewed",
+        "审核中",
+        "筛选中",
+        "评估中",
+        "处理中",
+      ],
+    },
+    {
+      status: "received",
+      confidence: 0.78,
+      patterns: [
+        "application received",
+        "received your application",
+        "we received",
+        "已收到",
+        "已接收",
+        "简历已收",
+      ],
+    },
+    {
+      status: "applied",
+      confidence: 0.74,
+      patterns: [
+        "submitted",
+        "application submitted",
+        "applied",
+        "已投递",
+        "已提交",
+        "投递成功",
+      ],
+    },
+    {
+      status: "withdrawn",
+      confidence: 0.9,
+      patterns: [
+        "withdrawn",
+        "you withdrew",
+        "candidate withdrew",
+        "已撤回",
+        "已撤销",
+      ],
+    },
+  ];
+
+  for (const rule of rules) {
+    for (const pattern of rule.patterns) {
+      const matched = typeof pattern === "string"
+        ? lowerText.includes(pattern.toLowerCase())
+        : pattern.test(lowerText);
+      if (matched) {
+        const rawStatus = typeof pattern === "string" ? pattern : pattern.source;
+        return {
+          rawStatus,
+          normalizedStatus: rule.status,
+          confidence: rule.confidence,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
@@ -129,6 +344,7 @@ async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
     const textHash = createHash("sha256").update(pageText || "").digest("hex");
     const pageTitle = await page.title().catch(() => "");
     const loginState = detectLoginState(page.url(), pageText || "");
+    const ruleStatus = loginState === "valid" ? extractStatusFromText(pageText || "") : null;
 
     await context.close();
     context = null;
@@ -137,6 +353,9 @@ async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
       success: true,
       targetId,
       loginState,
+      rawStatus: ruleStatus?.rawStatus,
+      normalizedStatus: ruleStatus?.normalizedStatus,
+      confidence: ruleStatus?.confidence,
       pageText: (pageText || "").slice(0, 10000),
       textHash,
       pageTitle,
@@ -208,11 +427,15 @@ async function handleBatchCheck(req: CheckRequest): Promise<BatchCheckResponse> 
         const textHash = createHash("sha256").update(pageText || "").digest("hex");
         const pageTitle = await page.title().catch(() => "");
         const loginState = detectLoginState(page.url(), pageText || "");
+        const ruleStatus = loginState === "valid" ? extractStatusFromText(pageText || "") : null;
 
         results.push({
           success: true,
           targetId: target.targetId,
           loginState,
+          rawStatus: ruleStatus?.rawStatus,
+          normalizedStatus: ruleStatus?.normalizedStatus,
+          confidence: ruleStatus?.confidence,
           pageText: (pageText || "").slice(0, 10000),
           textHash,
           pageTitle,

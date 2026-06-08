@@ -22,6 +22,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -33,6 +34,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       setApplications(data);
     } catch (e) {
       console.error("Failed to load applications:", e);
+      setNotice({ success: false, message: `加载求职记录失败: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setLoading(false);
     }
@@ -48,9 +50,11 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
     if (!ok) return;
     try {
       await applicationService.deleteApplication(id);
+      setNotice({ success: true, message: "求职记录已删除" });
       await loadApplications();
     } catch (e) {
       console.error("Failed to delete:", e);
+      setNotice({ success: false, message: `删除失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -171,6 +175,16 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
           新建记录
         </button>
       </div>
+
+      {notice && (
+        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+          notice.success
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-red-100 bg-red-50 text-red-700"
+        }`}>
+          {notice.message}
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">

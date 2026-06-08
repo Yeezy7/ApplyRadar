@@ -91,6 +91,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             content TEXT,
             old_status TEXT,
             new_status TEXT,
+            handled_at TEXT,
+            handled_action TEXT,
             event_time TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
@@ -163,6 +165,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             .map_err(|e| format!("Migration failed: {}", e))?;
     }
 
+    ensure_column(pool, "application_events", "handled_at", "TEXT").await?;
+    ensure_column(pool, "application_events", "handled_action", "TEXT").await?;
     ensure_column(pool, "reminders", "notified_at", "TEXT").await?;
 
     Ok(())

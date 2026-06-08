@@ -39,10 +39,6 @@ import {
   trackerService,
   sidecarService,
 } from "../services";
-import {
-  processSidecarCheckException,
-  processSidecarCheckResult,
-} from "../services/checkWorkflowService";
 import { confirmDelete } from "../services/dialogService";
 import ApplicationForm from "../components/ApplicationForm";
 
@@ -74,6 +70,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const [submittingTarget, setSubmittingTarget] = useState(false);
   const [checkingTarget, setCheckingTarget] = useState<string | null>(null);
   const [checkResults, setCheckResults] = useState<Map<string, { success: boolean; message: string }>>(new Map());
+  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
   const [showReminderForm, setShowReminderForm] = useState(false);
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderContent, setReminderContent] = useState("");
@@ -81,6 +78,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const [reminderAt, setReminderAt] = useState("");
   const [reminderError, setReminderError] = useState("");
   const [submittingReminder, setSubmittingReminder] = useState(false);
+  const [resolvingEventIds, setResolvingEventIds] = useState<Set<string>>(new Set());
   const requestIdRef = useRef(0);
 
   const openReminderForm = () => {
@@ -153,9 +151,11 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
     if (!ok) return;
     try {
       await trackerService.deleteTrackingTarget(targetId);
+      setNotice({ success: true, message: "监控目标已删除" });
       await loadData();
     } catch (e) {
       console.error("Failed to delete tracking target:", e);
+      setNotice({ success: false, message: `删除监控目标失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -196,6 +196,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
       setTargetUrl("");
       setTargetError("");
       setShowTargetForm(false);
+      setNotice({ success: true, message: "监控目标已添加" });
       await loadData();
     } catch (e) {
       setTargetError(`创建失败: ${e instanceof Error ? e.message : String(e)}`);
@@ -213,25 +214,31 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
     });
 
     try {
-      const profileDir = target.profile_dir || `profiles/${target.domain}`;
-      const res = await sidecarService.runCheck(target.id, target.status_url, profileDir);
-      const result = await processSidecarCheckResult(target, res, { application: app });
+      const result = await trackerService.runTrackingTargetCheck(target.id);
+      const item = result.items.find((entry) => entry.targetId === target.id);
+      const success = item?.success ?? result.failed === 0;
+      const message = item?.message || (success ? "检查完成" : "检查失败");
 
       setCheckResults(prev => {
         const next = new Map(prev);
-        next.set(target.id, { success: result.success, message: result.message });
+        next.set(target.id, { success, message });
         return next;
+      });
+      setNotice({
+        success: result.failed === 0,
+        message: `检查完成：${result.success} 成功，${result.failed} 失败${result.statusChanges > 0 ? `，${result.statusChanges} 状态变更` : ""}${result.loginIssues > 0 ? `，${result.loginIssues} 登录问题` : ""}`,
       });
 
       await loadData();
     } catch (e) {
       console.error("Check failed:", e);
-      const result = await processSidecarCheckException(target, e, { application: app });
+      const message = `检查失败: ${e instanceof Error ? e.message : String(e)}`;
       setCheckResults(prev => {
         const next = new Map(prev);
-        next.set(target.id, { success: false, message: result.message });
+        next.set(target.id, { success: false, message });
         return next;
       });
+      setNotice({ success: false, message });
       await loadData();
     } finally {
       setCheckingTarget(null);
@@ -248,6 +255,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
           next.set(target.id, { success: false, message: result.error || "打开登录页面失败" });
           return next;
         });
+        setNotice({ success: false, message: result.error || "打开登录页面失败" });
       }
     } catch (e) {
       console.error("Failed to open login:", e);
@@ -256,6 +264,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
         next.set(target.id, { success: false, message: `打开登录页面失败: ${e}` });
         return next;
       });
+      setNotice({ success: false, message: `打开登录页面失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -287,6 +296,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
         remind_at: remindAtDate.toISOString(),
       });
       closeReminderForm();
+      setNotice({ success: true, message: "提醒已创建" });
       await loadData();
     } catch (e) {
       setReminderError(`创建失败: ${e instanceof Error ? e.message : String(e)}`);
@@ -301,8 +311,10 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
       setReminders((prev) =>
         prev.map((r) => (r.id === id ? { ...r, is_done: 1 } : r))
       );
+      setNotice({ success: true, message: "提醒已完成" });
     } catch (e) {
       console.error("Failed to mark reminder done:", e);
+      setNotice({ success: false, message: `完成提醒失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -314,6 +326,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
       onBack();
     } catch (e) {
       console.error("Failed to delete application:", e);
+      setNotice({ success: false, message: `删除求职记录失败: ${e instanceof Error ? e.message : String(e)}` });
     }
   };
 
@@ -333,7 +346,38 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
       await loadData();
     } catch (e) {
       console.error("Failed to update status:", e);
+      setNotice({ success: false, message: `更新状态失败: ${e instanceof Error ? e.message : String(e)}` });
     }
+  };
+
+  const handleResolveEvent = async (eventId: string, action: "accepted" | "dismissed") => {
+    setResolvingEventIds((prev) => new Set(prev).add(eventId));
+    try {
+      await eventService.resolveApplicationEvent(eventId, action);
+      setNotice({ success: true, message: action === "accepted" ? "已采用 AI 识别结果" : "已忽略 AI 识别结果" });
+      await loadData();
+    } catch (e) {
+      console.error("Failed to resolve event:", e);
+      setNotice({ success: false, message: `处理 AI 识别结果失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setResolvingEventIds((prev) => {
+        const next = new Set(prev);
+        next.delete(eventId);
+        return next;
+      });
+    }
+  };
+
+  const findPendingStatusEventForRun = (run: TrackingRun) => {
+    if (!run.normalized_status || run.confidence == null || run.confidence < 0.60 || run.confidence >= 0.85) {
+      return undefined;
+    }
+    return events.find(
+      (event) =>
+        event.event_type === "note_added" &&
+        event.new_status === run.normalized_status &&
+        !event.handled_at
+    );
   };
 
   const getLoginStateIcon = (state: string) => {
@@ -453,6 +497,16 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div className={`mb-5 rounded-lg border px-4 py-3 text-sm ${
+          notice.success
+            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+            : "border-red-100 bg-red-50 text-red-700"
+        }`}>
+          {notice.message}
+        </div>
+      )}
 
       {/* Basic Info */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
@@ -681,28 +735,75 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
           <p className="text-sm text-gray-400 py-4">暂无事件记录</p>
         ) : (
           <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-            {events.slice(0, 50).map((event) => (
-              <div
-                key={event.id}
-                className="flex gap-3 text-sm"
-              >
+            {events.slice(0, 50).map((event) => {
+              const isPendingStatusEvent =
+                event.event_type === "note_added" &&
+                Boolean(event.new_status) &&
+                !event.handled_at;
+              const displayOldStatus = event.old_status || (isPendingStatusEvent ? app.status : undefined);
+
+              return (
+              <div key={event.id} className="flex gap-3 text-sm">
                 <div
                   className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${getEventDotColor(event)}`}
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-800">{event.title}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-gray-800">{event.title}</div>
+                    {isPendingStatusEvent && (
+                      <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
+                        待确认
+                      </span>
+                    )}
+                    {event.handled_action && (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] ${
+                        event.handled_action === "accepted"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-gray-100 text-gray-500"
+                      }`}>
+                        {event.handled_action === "accepted" ? "已采用" : "已忽略"}
+                      </span>
+                    )}
+                  </div>
                   {event.content && (
                     <p className="text-gray-500 text-xs mt-0.5 line-clamp-2">{event.content}</p>
                   )}
-                  {event.old_status && event.new_status && (
+                  {event.new_status && (
                     <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
-                        {getStatusLabel(event.old_status)}
-                      </span>
-                      <span className="text-xs text-gray-300">→</span>
+                      {displayOldStatus && (
+                        <>
+                          <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded">
+                            {getStatusLabel(displayOldStatus)}
+                          </span>
+                          <span className="text-xs text-gray-300">→</span>
+                        </>
+                      )}
                       <span className="text-xs px-1.5 py-0.5 bg-stone-50 text-stone-700 rounded">
                         {getStatusLabel(event.new_status)}
                       </span>
+                    </div>
+                  )}
+                  {isPendingStatusEvent && event.new_status && (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs text-amber-700">
+                        采用后状态将更新为 {getStatusLabel(event.new_status)}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleResolveEvent(event.id, "accepted")}
+                          disabled={resolvingEventIds.has(event.id)}
+                          className="rounded bg-stone-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-stone-800 disabled:opacity-50"
+                        >
+                          确认采用
+                        </button>
+                        <button
+                          onClick={() => handleResolveEvent(event.id, "dismissed")}
+                          disabled={resolvingEventIds.has(event.id)}
+                          className="rounded px-2.5 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                        >
+                          忽略
+                        </button>
+                      </div>
                     </div>
                   )}
                   <p className="text-xs text-gray-300 mt-1">
@@ -710,7 +811,8 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -724,6 +826,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
             {runs.map((run) => {
               const target = targets.find((t) => t.id === run.target_id);
+              const pendingStatusEvent = findPendingStatusEventForRun(run);
               return (
                 <div
                   key={run.id}
@@ -793,24 +896,11 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                     {/* Confirm button for low confidence results */}
-                    {run.normalized_status && run.confidence != null && run.confidence >= 0.60 && run.confidence < 0.85 && (
+                    {pendingStatusEvent && (
                       <button
-                        onClick={async () => {
-                          try {
-                            await applicationService.updateApplication(applicationId, { status: run.normalized_status as ApplicationStatus });
-                            await eventService.createEvent({
-                              application_id: applicationId,
-                              event_type: "status_change",
-                              title: "手动确认 AI 识别",
-                              old_status: app?.status,
-                              new_status: run.normalized_status!,
-                            });
-                            await loadData();
-                          } catch (e) {
-                            console.error("Failed to confirm status:", e);
-                          }
-                        }}
-                        className="px-2 py-1 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 rounded transition-colors"
+                        onClick={() => handleResolveEvent(pendingStatusEvent.id, "accepted")}
+                        disabled={resolvingEventIds.has(pendingStatusEvent.id)}
+                        className="px-2 py-1 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 rounded transition-colors disabled:opacity-50"
                       >
                         确认
                       </button>

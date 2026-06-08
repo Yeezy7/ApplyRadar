@@ -3,7 +3,7 @@ mod commands;
 
 use commands::{application, tracker, event, reminder, ai, sidecar, settings};
 use sqlx::SqlitePool;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 
@@ -126,57 +126,9 @@ pub fn run() {
 
                     println!("[auto_check] Running auto check");
 
-                    // Mark as running
-                    let _ = settings::save_setting_raw(&db, "auto_check_is_running", "true").await;
-
-                    // Run auto check using inner function
-                    let result = tracker::run_auto_check_inner(&app_handle, &db, false).await;
-
-                    // Update status
-                    let now = chrono::Utc::now().to_rfc3339();
-                    let _ = settings::save_setting_raw(&db, "auto_check_last_run_at", &now).await;
-                    let _ = settings::save_setting_raw(&db, "auto_check_is_running", "false").await;
-
-                    match result {
-                        Ok(result) => {
-                            let result_str = if result.total == 0 {
-                                "无待检查目标".to_string()
-                            } else {
-                                let mut parts = vec![
-                                    format!("检查{}个", result.total),
-                                    format!("{}成功", result.success),
-                                    format!("{}失败", result.failed),
-                                    format!("{}状态变更", result.status_changes),
-                                ];
-                                if result.login_issues > 0 {
-                                    parts.push(format!("{}登录问题", result.login_issues));
-                                }
-                                parts.join("，")
-                            };
-                            let _ = settings::save_setting_raw(&db, "auto_check_last_result", &result_str).await;
-                            if result.total > 0 {
-                                let _ = app_handle.emit("auto-check:notify", serde_json::json!({
-                                    "type": "summary",
-                                    "title": "检查完成",
-                                    "body": result_str,
-                                    "targetId": null,
-                                    "applicationId": null
-                                }));
-                            }
-                            println!("[auto_check] {}", result_str);
-                        }
-                        Err(e) => {
-                            let result_str = format!("错误: {}", e);
-                            let _ = settings::save_setting_raw(&db, "auto_check_last_result", &result_str).await;
-                            let _ = app_handle.emit("auto-check:notify", serde_json::json!({
-                                "type": "check_failed",
-                                "title": "自动检查失败",
-                                "body": result_str,
-                                "targetId": null,
-                                "applicationId": null
-                            }));
-                            println!("[auto_check] Error: {}", e);
-                        }
+                    match tracker::run_auto_check_with_status(&app_handle, &db, false).await {
+                        Ok(result) => println!("[auto_check] {}", tracker::format_auto_check_result(&result)),
+                        Err(e) => println!("[auto_check] Error: {}", e),
                     }
                 }
             });
@@ -186,26 +138,24 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-
                     let notifications_enabled = settings::get_setting_raw(&db, "notifications_enabled")
                         .await
                         .map(|value| value == "true")
                         .unwrap_or(true);
 
-                    if !notifications_enabled {
-                        continue;
+                    if notifications_enabled {
+                        match reminder::emit_due_reminder_notifications(&app_handle, &db).await {
+                            Ok(count) if count > 0 => {
+                                println!("[reminders] Emitted {} due reminder notifications", count);
+                            }
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("[reminders] Failed to emit due reminders: {}", e);
+                            }
+                        }
                     }
 
-                    match reminder::emit_due_reminder_notifications(&app_handle, &db).await {
-                        Ok(count) if count > 0 => {
-                            println!("[reminders] Emitted {} due reminder notifications", count);
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("[reminders] Failed to emit due reminders: {}", e);
-                        }
-                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
                 }
             });
 
@@ -226,6 +176,7 @@ pub fn run() {
             tracker::get_targets_needing_check,
             event::create_event,
             event::list_events_by_application,
+            event::resolve_application_event,
             reminder::create_reminder,
             reminder::list_reminders,
             reminder::mark_reminder_done,
@@ -243,6 +194,8 @@ pub fn run() {
             settings::is_ai_configured,
             tracker::run_auto_check,
             tracker::get_auto_check_status,
+            tracker::run_tracking_target_check,
+            tracker::run_tracking_targets_check,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
