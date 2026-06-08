@@ -158,6 +158,12 @@ pub async fn update_application(
 ) -> Result<Application, String> {
     let pool = &state.db;
     let now = chrono::Utc::now().to_rfc3339();
+    let requested_status = input.status.clone();
+    let previous_status = if requested_status.is_some() {
+        Some(get_application_inner(pool, &id).await?.status)
+    } else {
+        None
+    };
 
     let mut sets = vec!["updated_at = ?".to_string()];
     let mut values: Vec<String> = vec![now];
@@ -192,7 +198,13 @@ pub async fn update_application(
     query = query.bind(&id);
 
     query.execute(pool).await.map_err(|e| e.to_string())?;
-    get_application_inner(pool, &id).await
+    let app = get_application_inner(pool, &id).await?;
+
+    if let Some(new_status) = requested_status {
+        sync_tracking_targets_status(pool, &id, previous_status.as_deref(), &new_status).await?;
+    }
+
+    Ok(app)
 }
 
 #[command]
@@ -205,5 +217,39 @@ pub async fn delete_application(
         .execute(&state.db)
         .await
         .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn sync_tracking_targets_status(
+    pool: &SqlitePool,
+    application_id: &str,
+    previous_status: Option<&str>,
+    new_status: &str,
+) -> Result<(), String> {
+    let now = chrono::Utc::now().to_rfc3339();
+
+    if let Some(old_status) = previous_status.filter(|status| *status != "unknown" && *status != new_status) {
+        sqlx::query(
+            "UPDATE tracking_targets SET current_status = ?, last_status = ?, updated_at = ? WHERE application_id = ?"
+        )
+        .bind(new_status)
+        .bind(old_status)
+        .bind(&now)
+        .bind(application_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    } else {
+        sqlx::query(
+            "UPDATE tracking_targets SET current_status = ?, updated_at = ? WHERE application_id = ?"
+        )
+        .bind(new_status)
+        .bind(&now)
+        .bind(application_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }

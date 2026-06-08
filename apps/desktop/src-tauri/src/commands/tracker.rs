@@ -71,9 +71,15 @@ pub async fn create_tracking_target(
     let domain = extract_domain(&input.status_url);
     let ats_type = input.ats_type.unwrap_or_else(|| "generic".to_string());
     let check_frequency = input.check_frequency.unwrap_or_else(|| "daily".to_string());
+    let current_status = sqlx::query_scalar::<_, String>("SELECT status FROM applications WHERE id = ?")
+        .bind(&input.application_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_else(|| "unknown".to_string());
 
     sqlx::query(
-        "INSERT INTO tracking_targets (id, application_id, domain, status_url, ats_type, check_frequency, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO tracking_targets (id, application_id, domain, status_url, ats_type, check_frequency, current_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&id)
     .bind(&input.application_id)
@@ -81,6 +87,7 @@ pub async fn create_tracking_target(
     .bind(&input.status_url)
     .bind(&ats_type)
     .bind(&check_frequency)
+    .bind(&current_status)
     .bind(&now)
     .bind(&now)
     .execute(pool)
