@@ -9,7 +9,7 @@ export const eventService = {
   },
 
   async listByApplication(applicationId: string): Promise<ApplicationEvent[]> {
-    return callCloud<ApplicationEvent[]>(NAME, 'listByApplication', { applicationId });
+    return callCloud<ApplicationEvent[]>(NAME, 'listByApplication', { application_id: applicationId });
   },
 
   async listAll(limit?: number): Promise<ApplicationEvent[]> {

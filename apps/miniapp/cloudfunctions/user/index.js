@@ -5,18 +5,22 @@ const db = cloud.database();
 const SETTINGS_COLLECTION = 'user_settings';
 
 exports.main = async (event, context) => {
-  const { OPENID } = cloud.getWXContext();
-  const { action, data } = event;
+  try {
+    const { OPENID } = cloud.getWXContext();
+    const { action, data } = event;
 
-  switch (action) {
-    case 'getSettings':
-      return handleGetSettings(OPENID);
-    case 'saveSettings':
-      return handleSaveSettings(OPENID, data);
-    case 'getStats':
-      return handleGetStats(OPENID);
-    default:
-      return { code: -1, msg: `未知操作: ${action}` };
+    switch (action) {
+      case 'getSettings':
+        return handleGetSettings(OPENID);
+      case 'saveSettings':
+        return handleSaveSettings(OPENID, data);
+      case 'getStats':
+        return handleGetStats(OPENID);
+      default:
+        return { code: -1, msg: `未知操作: ${action}` };
+    }
+  } catch (error) {
+    return { code: -1, msg: error.message || '用户设置操作失败' };
   }
 };
 
@@ -75,7 +79,13 @@ async function handleGetStats(openid) {
   // Get application status breakdown
   const apps = await db.collection('applications')
     .where({ _openid: openid })
-    .field({ status: true, created_at: true, updated_at: true })
+    .field({
+      company_name: true,
+      job_title: true,
+      status: true,
+      created_at: true,
+      updated_at: true,
+    })
     .orderBy('updated_at', 'desc')
     .limit(200)
     .get();
@@ -106,6 +116,7 @@ async function handleGetStats(openid) {
       thisWeek: thisWeekCount,
       offers: offerCount,
       pendingReminders: remindersRes.total,
+      loginExpired: 0,
       statusCounts,
       recentApps,
     },

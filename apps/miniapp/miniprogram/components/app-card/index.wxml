@@ -4,13 +4,20 @@
     <view class="card-info">
       <view class="card-company">{{application.company_name}}</view>
       <view class="card-job" wx:if="{{application.job_title}}">{{application.job_title}}</view>
+      <view class="card-location" wx:if="{{application.location}}">{{application.location}}</view>
     </view>
-    <status-badge status="{{application.status}}" />
+    <view class="card-right">
+      <status-badge status="{{application.status}}" />
+      <view class="priority-tag priority-{{application.priority}}" wx:if="{{application.priority === 'high'}}">高优</view>
+    </view>
   </view>
   <view class="card-footer" wx:if="{{application.salary_range || waitingDays !== null}}">
     <view class="card-salary" wx:if="{{application.salary_range}}">{{application.salary_range}}</view>
-    <view class="card-days {{waitingDays > 14 ? 'days-warning' : ''}}" wx:if="{{waitingDays !== null}}">
-      {{waitingDays}} 天
+    <view class="card-meta">
+      <view class="card-days {{waitingDays > 14 ? 'days-warning' : ''}}" wx:if="{{waitingDays !== null}}">
+        {{waitingDays}} 天
+      </view>
+      <view class="card-source" wx:if="{{sourceLabel}}">{{sourceLabel}}</view>
     </view>
   </view>
 </view>

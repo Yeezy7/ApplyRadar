@@ -1,5 +1,5 @@
 import { userService, type DashboardStats } from '../../services/user';
-import { STATUS_LABELS, ACTIVE_STATUSES } from '../../utils/constants';
+import { STATUS_LABELS } from '../../utils/constants';
 import { formatDate, getCompanyInitial } from '../../utils/format';
 import type { ApplicationStatus } from '../../utils/types';
 
@@ -60,7 +60,7 @@ Page({
       this.setData({
         stats: {
           ...stats,
-          loginExpired: 0, // Phase 2: will come from tracking targets
+          loginExpired: stats.loginExpired || 0,
         },
         statusBreakdown: breakdown,
         recentApps,
@@ -76,6 +76,10 @@ Page({
   goToDetail(e: any) {
     const id = e.currentTarget.dataset.id;
     wx.navigateTo({ url: `/pages/applications/detail/index?id=${id}` });
+  },
+
+  goToApplications() {
+    wx.switchTab({ url: '/pages/applications/index' });
   },
 
   onPullDownRefresh() {

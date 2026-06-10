@@ -134,6 +134,20 @@
           </view>
         </view>
 
+        <!-- Links -->
+        <view class="links-section" wx:if="{{application.job_url || application.status_url}}">
+          <view class="link-item" wx:if="{{application.job_url}}" bind:tap="copyLink" data-url="{{application.job_url}}">
+            <text class="link-label">投递链接</text>
+            <text class="link-url">{{application.job_url}}</text>
+            <text class="link-copy">复制</text>
+          </view>
+          <view class="link-item" wx:if="{{application.status_url}}" bind:tap="copyLink" data-url="{{application.status_url}}">
+            <text class="link-label">状态页</text>
+            <text class="link-url">{{application.status_url}}</text>
+            <text class="link-copy">复制</text>
+          </view>
+        </view>
+
         <!-- Notes -->
         <view class="notes-section" wx:if="{{application.notes}}">
           <text class="notes-label">备注</text>

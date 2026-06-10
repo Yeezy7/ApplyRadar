@@ -23,6 +23,16 @@ export type ApplicationSource =
 
 export type Priority = 'low' | 'medium' | 'high';
 
+export type LoginState =
+  | 'valid'
+  | 'expired'
+  | 'captcha_required'
+  | 'mfa_required'
+  | 'blocked'
+  | 'unknown';
+
+export type CheckFrequency = 'manual' | 'daily' | 'every_6h' | 'every_12h';
+
 export interface Application {
   _id?: string;
   company_name: string;

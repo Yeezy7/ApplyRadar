@@ -1,4 +1,5 @@
 import { getCompanyInitial, getActiveWaitingDays } from '../../utils/format';
+import { SOURCE_LABELS } from '../../utils/constants';
 
 Component({
   properties: {
@@ -11,6 +12,7 @@ Component({
   data: {
     initial: '',
     waitingDays: null as number | null,
+    sourceLabel: '',
   },
 
   observers: {
@@ -19,6 +21,7 @@ Component({
         this.setData({
           initial: getCompanyInitial(app.company_name || ''),
           waitingDays: getActiveWaitingDays(app),
+          sourceLabel: SOURCE_LABELS[app.source as keyof typeof SOURCE_LABELS] || '',
         });
       }
     },

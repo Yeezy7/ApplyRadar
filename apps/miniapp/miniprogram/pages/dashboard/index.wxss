@@ -30,6 +30,13 @@
   color: #a8a29e;
 }
 
+.section-link {
+  font-size: 24rpx;
+  color: #3b82f6;
+  font-weight: 500;
+}
+}
+
 /* Status Breakdown */
 .status-list {
   display: flex;

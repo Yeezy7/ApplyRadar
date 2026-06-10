@@ -13,6 +13,7 @@ Page({
   data: {
     reminders: [] as any[],
     filteredReminders: [] as any[],
+    applicationNames: {} as Record<string, string>,
     search: '',
     typeFilter: '',
     includeDone: false,
@@ -53,7 +54,7 @@ Page({
         isOverdue: isReminderOverdue(r.remind_at, r.is_done),
         typeLabel: REMINDER_TYPE_LABELS[r.reminder_type as ReminderType] || r.reminder_type,
         remindAtStr: formatDateTime(r.remind_at),
-        appName: '',
+        appName: r.application_id ? this.data.applicationNames[r.application_id] || '' : '',
       }));
       this.setData({ reminders: formatted, loading: false });
       this.filterReminders();
@@ -67,11 +68,25 @@ Page({
   async loadApplications() {
     try {
       const apps = await applicationService.list();
+      const applicationNames = apps.reduce<Record<string, string>>((acc, app) => {
+        if (app._id) {
+          acc[app._id] = `${app.company_name} - ${app.job_title}`;
+        }
+        return acc;
+      }, {});
       const options = [
         { label: '不关联', value: '' },
         ...apps.map((a) => ({ label: `${a.company_name} - ${a.job_title}`, value: a._id! })),
       ];
-      this.setData({ appOptions: options });
+      this.setData({ appOptions: options, applicationNames });
+      if (this.data.reminders.length > 0) {
+        const reminders = this.data.reminders.map((reminder: any) => ({
+          ...reminder,
+          appName: reminder.application_id ? applicationNames[reminder.application_id] || '' : '',
+        }));
+        this.setData({ reminders });
+        this.filterReminders();
+      }
     } catch {}
   },
 

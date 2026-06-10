@@ -103,6 +103,52 @@
   color: #d97706;
 }
 
+/* Links */
+.links-section {
+  margin-bottom: 24rpx;
+}
+
+.link-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 20rpx;
+  background: #f5f5f4;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+}
+
+.link-item:active {
+  background: #e7e5e4;
+}
+
+.link-label {
+  font-size: 22rpx;
+  color: #78716c;
+  flex-shrink: 0;
+  width: 100rpx;
+}
+
+.link-url {
+  flex: 1;
+  font-size: 24rpx;
+  color: #3b82f6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.link-copy {
+  font-size: 22rpx;
+  color: #3b82f6;
+  font-weight: 500;
+  flex-shrink: 0;
+  padding: 4rpx 12rpx;
+  background: #eff6ff;
+  border-radius: 8rpx;
+}
+
 /* Notes */
 .notes-section {
   margin-bottom: 24rpx;

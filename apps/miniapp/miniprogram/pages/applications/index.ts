@@ -12,6 +12,8 @@ Page({
     statusPickerIndex: 0,
   },
 
+  searchTimer: null as any,
+
   onLoad() {
     const statusOptions = [
       { label: '全部状态', value: '' },
@@ -47,9 +49,15 @@ Page({
 
   onSearchInput(e: any) {
     this.setData({ search: e.detail.value });
+    // Debounce search
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      this.loadApplications();
+    }, 500);
   },
 
   onSearch() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
     this.loadApplications();
   },
 

@@ -96,9 +96,15 @@ Page({
     this.setData({ columns });
   },
 
+  searchTimer: null as any,
+
   onSearchInput(e: any) {
     this.setData({ search: e.detail.value });
-    this.buildColumns(this.data.applications);
+    // Debounce search
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => {
+      this.buildColumns(this.data.applications);
+    }, 300);
   },
 
   goToCreate() {

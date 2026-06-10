@@ -2,28 +2,31 @@ const cloud = require('wx-server-sdk');
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const _ = db.command;
-const $ = db.command.aggregate;
 
 const COLLECTION = 'applications';
 
 exports.main = async (event, context) => {
-  const { OPENID } = cloud.getWXContext();
-  const { action, data } = event;
-  const col = db.collection(COLLECTION);
+  try {
+    const { OPENID } = cloud.getWXContext();
+    const { action, data } = event;
+    const col = db.collection(COLLECTION);
 
-  switch (action) {
-    case 'create':
-      return handleCreate(col, OPENID, data);
-    case 'list':
-      return handleList(col, OPENID, data);
-    case 'get':
-      return handleGet(col, OPENID, data);
-    case 'update':
-      return handleUpdate(col, OPENID, data);
-    case 'delete':
-      return handleDelete(col, OPENID, data);
-    default:
-      return { code: -1, msg: `未知操作: ${action}` };
+    switch (action) {
+      case 'create':
+        return handleCreate(col, OPENID, data);
+      case 'list':
+        return handleList(col, OPENID, data);
+      case 'get':
+        return handleGet(col, OPENID, data);
+      case 'update':
+        return handleUpdate(col, OPENID, data);
+      case 'delete':
+        return handleDelete(col, OPENID, data);
+      default:
+        return { code: -1, msg: `未知操作: ${action}` };
+    }
+  } catch (error) {
+    return { code: -1, msg: error.message || '投递记录操作失败' };
   }
 };
 
@@ -53,9 +56,6 @@ async function handleCreate(col, openid, data) {
 
 async function handleList(col, openid, data) {
   const { search, status } = data || {};
-  let query = col.where({ _openid: openid });
-
-  // Build filter conditions
   const conditions = [{ _openid: openid }];
 
   if (status) {
@@ -82,34 +82,34 @@ async function handleList(col, openid, data) {
   return { code: 0, data: res.data };
 }
 
-async function handleGet(col, openid, data) {
-  const res = await col.doc(data.id).get();
-  if (res.data._openid !== openid) {
-    return { code: -1, msg: '无权访问' };
+async function getOwnedDoc(col, id, openid) {
+  const res = await col.doc(id).get();
+  if (!res.data) {
+    throw new Error('记录不存在');
   }
-  return { code: 0, data: res.data };
+  if (res.data._openid !== openid) {
+    throw new Error('无权访问');
+  }
+  return res.data;
+}
+
+async function handleGet(col, openid, data) {
+  const doc = await getOwnedDoc(col, data.id, openid);
+  return { code: 0, data: doc };
 }
 
 async function handleUpdate(col, openid, data) {
   const { id, ...updates } = data;
   updates.updated_at = new Date().toISOString();
 
-  // Verify ownership
-  const existing = await col.doc(id).get();
-  if (existing.data._openid !== openid) {
-    return { code: -1, msg: '无权修改' };
-  }
+  await getOwnedDoc(col, id, openid);
 
   await col.doc(id).update({ data: updates });
   return { code: 0, data: { _id: id, ...updates } };
 }
 
 async function handleDelete(col, openid, data) {
-  // Verify ownership
-  const existing = await col.doc(data.id).get();
-  if (existing.data._openid !== openid) {
-    return { code: -1, msg: '无权删除' };
-  }
+  await getOwnedDoc(col, data.id, openid);
 
   await col.doc(data.id).remove();
   return { code: 0, msg: '已删除' };

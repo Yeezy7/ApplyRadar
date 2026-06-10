@@ -9,7 +9,7 @@ export const reminderService = {
   },
 
   async list(includeDone = false, applicationId?: string): Promise<Reminder[]> {
-    return callCloud<Reminder[]>(NAME, 'list', { includeDone, applicationId });
+    return callCloud<Reminder[]>(NAME, 'list', { includeDone, application_id: applicationId });
   },
 
   async update(id: string, updates: Partial<Reminder>): Promise<void> {

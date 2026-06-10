@@ -6,19 +6,23 @@ const _ = db.command;
 const COLLECTION = 'application_events';
 
 exports.main = async (event, context) => {
-  const { OPENID } = cloud.getWXContext();
-  const { action, data } = event;
-  const col = db.collection(COLLECTION);
+  try {
+    const { OPENID } = cloud.getWXContext();
+    const { action, data } = event;
+    const col = db.collection(COLLECTION);
 
-  switch (action) {
-    case 'create':
-      return handleCreate(col, OPENID, data);
-    case 'listByApplication':
-      return handleListByApplication(col, OPENID, data);
-    case 'listAll':
-      return handleListAll(col, OPENID, data);
-    default:
-      return { code: -1, msg: `未知操作: ${action}` };
+    switch (action) {
+      case 'create':
+        return handleCreate(col, OPENID, data);
+      case 'listByApplication':
+        return handleListByApplication(col, OPENID, data);
+      case 'listAll':
+        return handleListAll(col, OPENID, data);
+      default:
+        return { code: -1, msg: `未知操作: ${action}` };
+    }
+  } catch (error) {
+    return { code: -1, msg: error.message || '事件操作失败' };
   }
 };
 
@@ -42,10 +46,11 @@ async function handleCreate(col, openid, data) {
 }
 
 async function handleListByApplication(col, openid, data) {
+  const applicationId = data.application_id || data.applicationId;
   const res = await col
     .where({
       _openid: openid,
-      application_id: data.application_id,
+      application_id: applicationId,
     })
     .orderBy('event_time', 'desc')
     .limit(100)

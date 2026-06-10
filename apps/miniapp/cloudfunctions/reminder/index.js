@@ -6,23 +6,27 @@ const _ = db.command;
 const COLLECTION = 'reminders';
 
 exports.main = async (event, context) => {
-  const { OPENID } = cloud.getWXContext();
-  const { action, data } = event;
-  const col = db.collection(COLLECTION);
+  try {
+    const { OPENID } = cloud.getWXContext();
+    const { action, data } = event;
+    const col = db.collection(COLLECTION);
 
-  switch (action) {
-    case 'create':
-      return handleCreate(col, OPENID, data);
-    case 'list':
-      return handleList(col, OPENID, data);
-    case 'update':
-      return handleUpdate(col, OPENID, data);
-    case 'markDone':
-      return handleMarkDone(col, OPENID, data);
-    case 'delete':
-      return handleDelete(col, OPENID, data);
-    default:
-      return { code: -1, msg: `未知操作: ${action}` };
+    switch (action) {
+      case 'create':
+        return handleCreate(col, OPENID, data);
+      case 'list':
+        return handleList(col, OPENID, data);
+      case 'update':
+        return handleUpdate(col, OPENID, data);
+      case 'markDone':
+        return handleMarkDone(col, OPENID, data);
+      case 'delete':
+        return handleDelete(col, OPENID, data);
+      default:
+        return { code: -1, msg: `未知操作: ${action}` };
+    }
+  } catch (error) {
+    return { code: -1, msg: error.message || '提醒操作失败' };
   }
 };
 
@@ -47,7 +51,8 @@ async function handleCreate(col, openid, data) {
 }
 
 async function handleList(col, openid, data) {
-  const { includeDone = false, applicationId } = data || {};
+  const { includeDone = false } = data || {};
+  const applicationId = data?.application_id || data?.applicationId;
   const conditions = [{ _openid: openid }];
 
   if (!includeDone) {

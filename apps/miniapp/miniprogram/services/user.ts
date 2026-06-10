@@ -1,3 +1,4 @@
+import type { Application } from '../utils/types';
 import { callCloud } from './common';
 
 const NAME = 'user';
@@ -16,8 +17,9 @@ export interface DashboardStats {
   thisWeek: number;
   offers: number;
   pendingReminders: number;
+  loginExpired: number;
   statusCounts: Record<string, number>;
-  recentApps: any[];
+  recentApps: Application[];
 }
 
 export const userService = {

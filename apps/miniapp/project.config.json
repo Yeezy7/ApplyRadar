@@ -35,12 +35,24 @@
     "minifyWXSS": true,
     "disableUseStrict": false,
     "showES6CompileOption": false,
-    "useCompilerPlugins": false
+    "useCompilerPlugins": false,
+    "compileWorklet": false,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
   },
-  "appid": "your-appid-here",
+  "appid": "wx323a400c64626fd6",
   "projectname": "applyradar-miniapp",
   "description": "投递雷达 - 求职状态跟踪小程序",
   "libVersion": "3.3.4",
   "compileType": "miniprogram",
-  "condition": {}
+  "condition": {},
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }
