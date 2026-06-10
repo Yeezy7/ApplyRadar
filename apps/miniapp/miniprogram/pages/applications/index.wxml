@@ -32,6 +32,12 @@
     </button>
   </view>
 
+  <!-- Result count -->
+  <view class="result-count" wx:if="{{!loading && applications.length > 0}}">
+    <text>共 {{applications.length}} 条记录</text>
+    <text class="clear-filter" wx:if="{{search || statusFilter}}" bind:tap="clearFilter">清除筛选</text>
+  </view>
+
   <!-- Loading -->
   <view wx:if="{{loading}}" class="loading-wrap">
     <view class="skeleton skeleton-item" wx:for="{{5}}" wx:key="index"></view>

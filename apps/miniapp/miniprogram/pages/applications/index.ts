@@ -71,6 +71,15 @@ Page({
     this.loadApplications();
   },
 
+  clearFilter() {
+    this.setData({
+      search: '',
+      statusFilter: '',
+      statusPickerIndex: 0,
+    });
+    this.loadApplications();
+  },
+
   goToCreate() {
     wx.navigateTo({ url: '/pages/applications/detail/index' });
   },

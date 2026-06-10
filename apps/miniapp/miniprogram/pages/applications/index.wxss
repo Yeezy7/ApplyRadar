@@ -42,7 +42,21 @@
 }
 
 .action-bar {
-  margin-bottom: 24rpx;
+  margin-bottom: 16rpx;
+}
+
+.result-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 24rpx;
+  color: #78716c;
+  margin-bottom: 16rpx;
+}
+
+.clear-filter {
+  color: #3b82f6;
+  font-weight: 500;
 }
 
 .new-btn {
@@ -65,4 +79,26 @@
 .app-list {
   display: flex;
   flex-direction: column;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .search-input-wrap {
+    background: #1c1917;
+    border-color: #44403c;
+  }
+
+  .search-input {
+    color: #fafaf9;
+  }
+
+  .filter-btn {
+    background: #1c1917;
+    border-color: #44403c;
+    color: #d6d3d1;
+  }
+
+  .result-count {
+    color: #a8a29e;
+  }
 }
