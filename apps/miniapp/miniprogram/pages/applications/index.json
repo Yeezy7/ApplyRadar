@@ -1,0 +1,8 @@
+{
+  "navigationBarTitleText": "投递记录",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "app-card": "../../components/app-card/index",
+    "empty-state": "../../components/empty-state/index"
+  }
+}

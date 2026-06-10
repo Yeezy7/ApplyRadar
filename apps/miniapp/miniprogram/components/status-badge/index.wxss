@@ -1,0 +1,11 @@
+@import '../../styles/theme.wxss';
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+  white-space: nowrap;
+}

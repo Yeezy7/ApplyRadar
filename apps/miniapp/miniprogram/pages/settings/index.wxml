@@ -1,0 +1,100 @@
+<view class="container">
+  <!-- AI Configuration -->
+  <view class="card section">
+    <view class="section-title">AI 配置</view>
+
+    <view class="form-group">
+      <text class="form-label">API Key</text>
+      <input
+        class="input-field"
+        type="{{showApiKey ? 'text' : 'password'}}"
+        value="{{settings.apiKey}}"
+        bindinput="onSettingInput"
+        data-field="apiKey"
+        placeholder="sk-..."
+      />
+      <view class="toggle-visibility" bind:tap="toggleApiKey">
+        <text>{{showApiKey ? '隐藏' : '显示'}}</text>
+      </view>
+      <text class="form-hint">支持 OpenAI 兼容 API（OpenAI、Deepseek、本地 Ollama 等）</text>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">API Base URL</text>
+      <input
+        class="input-field"
+        value="{{settings.apiBaseUrl}}"
+        bindinput="onSettingInput"
+        data-field="apiBaseUrl"
+        placeholder="https://api.openai.com/v1"
+      />
+      <text class="form-hint">不需要填写 /chat/completions，只需填写基础 URL</text>
+    </view>
+
+    <view class="form-group">
+      <text class="form-label">模型</text>
+      <input
+        class="input-field"
+        value="{{settings.model}}"
+        bindinput="onSettingInput"
+        data-field="model"
+        placeholder="gpt-4o-mini"
+      />
+    </view>
+
+    <button class="btn-secondary test-btn" bind:tap="testConnection" disabled="{{testing || !settings.apiKey}}">
+      {{testing ? '测试中...' : '测试连接'}}
+    </button>
+    <text class="test-result {{testOk ? 'result-ok' : 'result-error'}}" wx:if="{{testResult}}">{{testResult}}</text>
+  </view>
+
+  <!-- Automation Settings -->
+  <view class="card section">
+    <view class="section-title">自动化</view>
+
+    <view class="form-group">
+      <text class="form-label">默认检查频率</text>
+      <picker
+        mode="selector"
+        range="{{frequencyOptions}}"
+        range-key="label"
+        value="{{frequencyIndex}}"
+        bindchange="onFrequencyChange"
+      >
+        <view class="input-field picker-field">{{frequencyOptions[frequencyIndex].label}} ▼</view>
+      </picker>
+      <text class="form-hint">新建监控目标时的默认检查频率（Phase 2 功能）</text>
+    </view>
+
+    <view class="toggle-row">
+      <view class="toggle-info">
+        <text class="toggle-label">系统通知</text>
+        <text class="toggle-desc">状态变化、登录过期时发送通知</text>
+      </view>
+      <switch
+        checked="{{settings.notificationsEnabled}}"
+        bindchange="onNotificationToggle"
+        color="#1c1917"
+      />
+    </view>
+  </view>
+
+  <!-- About -->
+  <view class="card section">
+    <view class="section-title">关于</view>
+    <view class="about-info">
+      <text class="about-name">投递雷达 (ApplyRadar)</text>
+      <text class="about-version">小程序版本 0.1.0</text>
+      <text class="about-desc">求职状态自动跟踪工具</text>
+    </view>
+  </view>
+
+  <!-- Save Button -->
+  <view class="save-row">
+    <button class="btn-primary save-btn" bind:tap="saveSettings" disabled="{{!dirty}}">
+      保存设置
+    </button>
+    <text class="save-hint" wx:if="{{dirty}}">有未保存的更改</text>
+    <text class="save-ok" wx:if="{{saved}}">已保存 ✓</text>
+  </view>
+</view>

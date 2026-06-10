@@ -1,0 +1,68 @@
+@import '../../styles/theme.wxss';
+
+.search-bar {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.search-input-wrap {
+  flex: 1;
+  background: #ffffff;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  height: 72rpx;
+  font-size: 28rpx;
+  width: 100%;
+}
+
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #ffffff;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  height: 72rpx;
+  font-size: 26rpx;
+  color: #57534e;
+  white-space: nowrap;
+}
+
+.filter-arrow {
+  font-size: 20rpx;
+  color: #a8a29e;
+}
+
+.action-bar {
+  margin-bottom: 24rpx;
+}
+
+.new-btn {
+  width: 100%;
+  height: 80rpx;
+  line-height: 80rpx;
+  font-size: 28rpx;
+}
+
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.skeleton-item {
+  height: 160rpx;
+}
+
+.app-list {
+  display: flex;
+  flex-direction: column;
+}

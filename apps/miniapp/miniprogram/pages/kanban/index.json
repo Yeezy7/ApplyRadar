@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "状态看板",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "empty-state": "../../components/empty-state/index"
+  }
+}

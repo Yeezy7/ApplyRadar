@@ -1,0 +1,291 @@
+@import '../../styles/theme.wxss';
+
+.search-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.search-input-wrap {
+  background: #ffffff;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+}
+
+.search-input {
+  height: 72rpx;
+  font-size: 28rpx;
+}
+
+.filter-row {
+  display: flex;
+  gap: 16rpx;
+}
+
+.filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #ffffff;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  height: 64rpx;
+  font-size: 26rpx;
+  color: #57534e;
+}
+
+.filter-arrow {
+  font-size: 20rpx;
+  color: #a8a29e;
+}
+
+.toggle-btn {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 0 24rpx;
+  height: 64rpx;
+  font-size: 26rpx;
+  color: #57534e;
+}
+
+.toggle-active {
+  background: #1c1917;
+  color: #ffffff;
+  border-color: #1c1917;
+}
+
+.create-btn {
+  width: 100%;
+  height: 80rpx;
+  line-height: 80rpx;
+  margin-bottom: 24rpx;
+}
+
+.loading-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.skeleton-item {
+  height: 120rpx;
+}
+
+/* Reminder List */
+.reminder-list {
+  background: #ffffff;
+  border-radius: 24rpx;
+  border: 1rpx solid #f0efed;
+  overflow: hidden;
+}
+
+.reminder-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  padding: 28rpx;
+  border-bottom: 1rpx solid #f5f5f4;
+}
+
+.reminder-item:last-child {
+  border-bottom: none;
+}
+
+.reminder-done {
+  opacity: 0.5;
+}
+
+.reminder-overdue {
+  background: #fef2f2;
+}
+
+.reminder-check {
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  border: 2rpx solid #d6d3d1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  color: #ffffff;
+  flex-shrink: 0;
+  margin-top: 4rpx;
+}
+
+.reminder-check.checked {
+  background: #10b981;
+  border-color: #10b981;
+}
+
+.reminder-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.reminder-header {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  flex-wrap: wrap;
+}
+
+.reminder-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1c1917;
+}
+
+.text-done {
+  text-decoration: line-through;
+  color: #a8a29e;
+}
+
+.reminder-type {
+  font-size: 20rpx;
+  padding: 2rpx 10rpx;
+  border-radius: 4rpx;
+}
+
+.reminder-desc {
+  font-size: 24rpx;
+  color: #78716c;
+  margin-top: 8rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.reminder-app {
+  font-size: 22rpx;
+  color: #a8a29e;
+  margin-top: 4rpx;
+  display: block;
+}
+
+.reminder-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8rpx;
+  flex-shrink: 0;
+}
+
+.reminder-time {
+  font-size: 22rpx;
+  color: #a8a29e;
+}
+
+.time-overdue {
+  color: #dc2626;
+  font-weight: 500;
+}
+
+.reminder-overdue-tag {
+  font-size: 18rpx;
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2rpx 10rpx;
+  border-radius: 4rpx;
+}
+
+.reminder-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.action-link {
+  font-size: 22rpx;
+  color: #3b82f6;
+}
+
+.action-danger {
+  color: #dc2626;
+}
+
+/* Modal */
+.modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
+}
+
+.modal-content {
+  width: 100%;
+  background: #ffffff;
+  border-radius: 32rpx 32rpx 0 0;
+  padding: 32rpx;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32rpx;
+}
+
+.modal-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  color: #1c1917;
+}
+
+.modal-close {
+  font-size: 48rpx;
+  color: #a8a29e;
+  line-height: 1;
+}
+
+.modal-body {
+  margin-bottom: 32rpx;
+}
+
+.form-group {
+  margin-bottom: 24rpx;
+}
+
+.form-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #78716c;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.textarea-field {
+  min-height: 120rpx;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.picker-field {
+  display: flex;
+  align-items: center;
+}
+
+.modal-footer {
+  display: flex;
+  gap: 20rpx;
+}
+
+.modal-footer .btn-secondary,
+.modal-footer .btn-primary {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+}

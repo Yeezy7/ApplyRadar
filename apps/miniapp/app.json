@@ -1,0 +1,58 @@
+{
+  "pages": [
+    "pages/dashboard/index",
+    "pages/applications/index",
+    "pages/applications/detail/index",
+    "pages/kanban/index",
+    "pages/reminders/index",
+    "pages/settings/index"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#1c1917",
+    "navigationBarTitleText": "投递雷达",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f5f4",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#a8a29e",
+    "selectedColor": "#1c1917",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/dashboard/index",
+        "text": "仪表盘",
+        "iconPath": "miniprogram/styles/icons/dashboard.png",
+        "selectedIconPath": "miniprogram/styles/icons/dashboard-active.png"
+      },
+      {
+        "pagePath": "pages/applications/index",
+        "text": "投递",
+        "iconPath": "miniprogram/styles/icons/briefcase.png",
+        "selectedIconPath": "miniprogram/styles/icons/briefcase-active.png"
+      },
+      {
+        "pagePath": "pages/kanban/index",
+        "text": "看板",
+        "iconPath": "miniprogram/styles/icons/kanban.png",
+        "selectedIconPath": "miniprogram/styles/icons/kanban-active.png"
+      },
+      {
+        "pagePath": "pages/reminders/index",
+        "text": "提醒",
+        "iconPath": "miniprogram/styles/icons/bell.png",
+        "selectedIconPath": "miniprogram/styles/icons/bell-active.png"
+      },
+      {
+        "pagePath": "pages/settings/index",
+        "text": "设置",
+        "iconPath": "miniprogram/styles/icons/settings.png",
+        "selectedIconPath": "miniprogram/styles/icons/settings-active.png"
+      }
+    ]
+  },
+  "cloud": true,
+  "sitemapLocation": "sitemap.json",
+  "style": "v2"
+}
