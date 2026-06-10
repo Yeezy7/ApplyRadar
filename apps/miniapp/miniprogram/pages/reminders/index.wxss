@@ -289,3 +289,86 @@
   height: 80rpx;
   line-height: 80rpx;
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .search-input-wrap {
+    background: #1c1917;
+    border-color: #44403c;
+  }
+
+  .search-input {
+    color: #fafaf9;
+  }
+
+  .filter-btn {
+    background: #1c1917;
+    border-color: #44403c;
+    color: #d6d3d1;
+  }
+
+  .toggle-btn {
+    background: #1c1917;
+    border-color: #44403c;
+    color: #d6d3d1;
+  }
+
+  .toggle-active {
+    background: #fafaf9;
+    color: #1c1917;
+  }
+
+  .reminder-list {
+    background: #1c1917;
+    border-color: #292524;
+  }
+
+  .reminder-item {
+    border-bottom-color: #292524;
+  }
+
+  .reminder-overdue {
+    background: #450a0a;
+  }
+
+  .reminder-title {
+    color: #fafaf9;
+  }
+
+  .reminder-desc {
+    color: #a8a29e;
+  }
+
+  .reminder-app {
+    color: #78716c;
+  }
+
+  .reminder-time {
+    color: #78716c;
+  }
+
+  .time-overdue {
+    color: #f87171;
+  }
+
+  .reminder-overdue-tag {
+    background: #450a0a;
+    color: #f87171;
+  }
+
+  .modal-content {
+    background: #1c1917;
+  }
+
+  .modal-title {
+    color: #fafaf9;
+  }
+
+  .modal-close {
+    color: #78716c;
+  }
+
+  .form-label {
+    color: #78716c;
+  }
+}

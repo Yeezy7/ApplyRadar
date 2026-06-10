@@ -463,3 +463,118 @@
   height: 80rpx;
   line-height: 80rpx;
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .header-company {
+    color: #fafaf9;
+  }
+
+  .header-job {
+    color: #a8a29e;
+  }
+
+  .header-avatar {
+    background: linear-gradient(135deg, #44403c, #292524);
+    color: #d6d3d1;
+  }
+
+  .status-picker-row {
+    background: #292524;
+  }
+
+  .status-picker-label {
+    color: #a8a29e;
+  }
+
+  .status-picker-btn {
+    color: #fafaf9;
+  }
+
+  .info-label {
+    color: #78716c;
+  }
+
+  .info-value {
+    color: #fafaf9;
+  }
+
+  .notes-section {
+    background: #292524;
+  }
+
+  .notes-label {
+    color: #78716c;
+  }
+
+  .notes-text {
+    color: #d6d3d1;
+  }
+
+  .link-item {
+    background: #292524;
+  }
+
+  .link-label {
+    color: #78716c;
+  }
+
+  .link-url {
+    color: #60a5fa;
+  }
+
+  .link-copy {
+    color: #60a5fa;
+    background: #1e3a5f;
+  }
+
+  .action-btn {
+    background: #292524;
+    color: #d6d3d1;
+  }
+
+  .action-btn-danger {
+    background: #450a0a;
+    color: #f87171;
+  }
+
+  .timeline-content {
+    background: #292524;
+  }
+
+  .timeline-title {
+    color: #fafaf9;
+  }
+
+  .timeline-body {
+    color: #a8a29e;
+  }
+
+  .reminder-check {
+    border-color: #44403c;
+  }
+
+  .reminder-title {
+    color: #fafaf9;
+  }
+
+  .reminder-time {
+    color: #78716c;
+  }
+
+  .form-title {
+    color: #fafaf9;
+  }
+
+  .form-label {
+    color: #78716c;
+  }
+
+  .modal-content {
+    background: #1c1917;
+  }
+
+  .modal-title {
+    color: #fafaf9;
+  }
+}
