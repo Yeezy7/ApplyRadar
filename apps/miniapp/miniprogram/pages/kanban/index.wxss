@@ -253,3 +253,68 @@
   color: #a8a29e;
   margin-top: 16rpx;
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .search-input-wrap {
+    background: #1c1917;
+    border-color: #44403c;
+  }
+
+  .search-input {
+    color: #fafaf9;
+  }
+
+  .kanban-column {
+    background: #1c1917;
+  }
+
+  .kanban-card {
+    background: #292524;
+    border-color: #44403c;
+  }
+
+  .kanban-card:active {
+    background: #44403c;
+  }
+
+  .card-company {
+    color: #fafaf9;
+  }
+
+  .card-job {
+    color: #a8a29e;
+  }
+
+  .tag-priority {
+    background: #450a0a;
+    color: #f87171;
+  }
+
+  .tag-days {
+    background: #422006;
+    color: #fbbf24;
+  }
+
+  .tag-salary {
+    background: #292524;
+    color: #78716c;
+  }
+
+  .action-sheet {
+    background: #1c1917;
+  }
+
+  .action-sheet-title {
+    color: #fafaf9;
+  }
+
+  .action-sheet-item {
+    color: #fafaf9;
+    border-bottom-color: #292524;
+  }
+
+  .action-sheet-item:active {
+    background: #292524;
+  }
+}
