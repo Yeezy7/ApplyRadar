@@ -97,11 +97,21 @@ export default function KanbanPage({ onSelectApp }: Props) {
     );
   }, [applications, search]);
 
-  const getColumnApps = useCallback(
-    (column: KanbanColumn) =>
-      filteredApps.filter((a) => column.statuses.includes(a.status as ApplicationStatus)),
-    [filteredApps]
-  );
+  const columnAppsMap = useMemo(() => {
+    const map = new Map<string, Application[]>();
+    for (const col of KANBAN_COLUMNS) {
+      map.set(col.id, []);
+    }
+    for (const app of filteredApps) {
+      for (const col of KANBAN_COLUMNS) {
+        if (col.statuses.includes(app.status as ApplicationStatus)) {
+          map.get(col.id)!.push(app);
+          break;
+        }
+      }
+    }
+    return map;
+  }, [filteredApps]);
 
   const handleDragStart = (id: string) => {
     setDraggedId(id);
@@ -255,7 +265,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
         <div className="overflow-x-auto pb-2">
           <div className="grid min-w-[980px] grid-cols-5 gap-4 pb-4">
           {KANBAN_COLUMNS.map((col) => {
-            const apps = getColumnApps(col);
+            const apps = columnAppsMap.get(col.id) || [];
             const isDragOver = dragOverColumnId === col.id;
 
             return (

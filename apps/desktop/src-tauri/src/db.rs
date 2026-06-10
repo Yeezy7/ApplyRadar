@@ -187,6 +187,8 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     Ok(())
 }
 
+/// SAFETY: `table`, `column`, and `column_type` MUST be compile-time string literals.
+/// Never pass user-supplied values to this function — it uses raw SQL interpolation.
 async fn ensure_column(
     pool: &SqlitePool,
     table: &str,

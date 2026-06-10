@@ -117,7 +117,13 @@ fn resolve_profile_dir(app_handle: &tauri::AppHandle, profile_dir: &str) -> Resu
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
     let resolved = app_data_dir.join(profile_dir);
-    // Create the directory if it doesn't exist
+    // Prevent path traversal — resolved path must stay under app_data_dir
+    let canonical_app = app_data_dir.canonicalize().unwrap_or(app_data_dir.clone());
+    let canonical_resolved = resolved.canonicalize().unwrap_or(resolved.clone());
+    if !canonical_resolved.starts_with(&canonical_app) {
+        return Err("profile_dir 路径非法".to_string());
+    }
+
     std::fs::create_dir_all(&resolved)
         .map_err(|e| format!("Failed to create profile dir {:?}: {}", resolved, e))?;
 
