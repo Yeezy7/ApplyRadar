@@ -4,6 +4,7 @@ use tauri::command;
 use tauri::State;
 
 use crate::AppState;
+use super::validation::is_valid_application_status;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Application {
@@ -100,23 +101,6 @@ where
     }
 
     deserializer.deserialize_option(NullableStringVisitor)
-}
-
-fn is_valid_application_status(status: &str) -> bool {
-    matches!(
-        status,
-        "to_apply"
-            | "applied"
-            | "received"
-            | "under_review"
-            | "assessment"
-            | "interview"
-            | "final_interview"
-            | "offer"
-            | "rejected"
-            | "withdrawn"
-            | "unknown"
-    )
 }
 
 fn is_valid_priority(priority: &str) -> bool {
@@ -254,8 +238,9 @@ pub async fn list_applications(
     let mut binds: Vec<String> = Vec::new();
 
     if let Some(ref s) = search {
-        let pattern = format!("%{}%", s);
-        sql += " AND (company_name LIKE ?1 OR job_title LIKE ?1)";
+        let escaped = s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let pattern = format!("%{}%", escaped);
+        sql += " AND (company_name LIKE ?1 ESCAPE '\\' OR job_title LIKE ?1 ESCAPE '\\')";
         binds.push(pattern);
     }
     if let Some(ref s) = status {

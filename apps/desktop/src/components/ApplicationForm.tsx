@@ -23,6 +23,7 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
     status: application?.status || "unknown",
     priority: application?.priority || "medium",
     applied_at: application?.applied_at?.split("T")[0] || "",
+    deadline_at: application?.deadline_at?.split("T")[0] || "",
     notes: application?.notes || "",
   });
   const [saving, setSaving] = useState(false);
@@ -121,6 +122,7 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
         const input = {
           ...form,
           applied_at: nullableText(form.applied_at),
+          deadline_at: nullableText(form.deadline_at),
           location: nullableText(form.location),
           salary_range: nullableText(form.salary_range),
           job_url: nullableText(form.job_url),
@@ -148,6 +150,7 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
         const input = {
           ...form,
           applied_at: optionalText(form.applied_at),
+          deadline_at: optionalText(form.deadline_at),
           location: optionalText(form.location),
           salary_range: optionalText(form.salary_range),
           job_url: optionalText(form.job_url),
@@ -379,15 +382,27 @@ export default function ApplicationForm({ application, onClose, onSaved }: Props
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">投递日期</label>
-            <input
-              name="applied_at"
-              type="date"
-              value={form.applied_at}
-              onChange={handleChange}
-              className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">投递日期</label>
+              <input
+                name="applied_at"
+                type="date"
+                value={form.applied_at}
+                onChange={handleChange}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">截止日期</label>
+              <input
+                name="deadline_at"
+                type="date"
+                value={form.deadline_at}
+                onChange={handleChange}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+              />
+            </div>
           </div>
 
           <div>

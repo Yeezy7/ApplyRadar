@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter};
 use tauri::State;
 
 use crate::AppState;
+use super::push_log;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Reminder {
@@ -49,6 +50,15 @@ pub struct CreateReminderInput {
     pub reminder_type: Option<String>,
     pub remind_at: String,
     pub notified_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateReminderInput {
+    pub application_id: Option<Option<String>>,
+    pub title: Option<String>,
+    pub content: Option<Option<String>>,
+    pub reminder_type: Option<Option<String>>,
+    pub remind_at: Option<String>,
 }
 
 fn is_valid_reminder_type(reminder_type: &str) -> bool {
@@ -188,6 +198,91 @@ pub async fn mark_reminder_done(
 }
 
 #[command]
+pub async fn update_reminder(
+    state: State<'_, AppState>,
+    id: String,
+    input: UpdateReminderInput,
+) -> Result<Reminder, String> {
+    let pool = &state.db;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    if let Some(ref title) = input.title {
+        if title.trim().is_empty() {
+            return Err("提醒标题不能为空".to_string());
+        }
+    }
+    if let Some(ref remind_at) = input.remind_at {
+        validate_rfc3339(remind_at, "提醒")?;
+    }
+    if let Some(Some(ref reminder_type)) = input.reminder_type {
+        if !is_valid_reminder_type(reminder_type) {
+            return Err(format!("Unsupported reminder type: {}", reminder_type));
+        }
+    }
+    if let Some(Some(ref application_id)) = input.application_id {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT 1 FROM applications WHERE id = ?")
+            .bind(application_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .is_some();
+        if !exists {
+            return Err("Application not found".to_string());
+        }
+    }
+
+    let mut sets = vec!["updated_at = ?".to_string()];
+    let mut values: Vec<String> = vec![now];
+
+    if let Some(title) = input.title {
+        sets.push("title = ?".to_string());
+        values.push(title.trim().to_string());
+    }
+    if let Some(remind_at) = input.remind_at {
+        sets.push("remind_at = ?".to_string());
+        values.push(remind_at);
+        // Reset notified_at when remind_at changes so notification fires again
+        sets.push("notified_at = NULL".to_string());
+    }
+    if let Some(content) = input.content {
+        sets.push("content = ?".to_string());
+        values.push(content.unwrap_or_default());
+    }
+    if let Some(reminder_type) = input.reminder_type {
+        sets.push("reminder_type = ?".to_string());
+        values.push(reminder_type.unwrap_or_default());
+    }
+    if let Some(application_id) = input.application_id {
+        sets.push("application_id = ?".to_string());
+        values.push(application_id.unwrap_or_default());
+    }
+
+    if sets.len() <= 1 {
+        return Err("No fields to update".to_string());
+    }
+
+    let sql = format!("UPDATE reminders SET {} WHERE id = ?", sets.join(", "));
+    let mut query = sqlx::query(&sql);
+    for v in &values {
+        query = query.bind(v);
+    }
+    query = query.bind(&id);
+
+    let result = query.execute(pool).await.map_err(|e| e.to_string())?;
+    if result.rows_affected() == 0 {
+        return Err("Reminder not found".to_string());
+    }
+
+    let row = sqlx::query_as::<_, Reminder>("SELECT * FROM reminders WHERE id = ?")
+        .bind(&id)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(row)
+}
+
+#[command]
 pub async fn delete_reminder(
     state: State<'_, AppState>,
     id: String,
@@ -264,8 +359,10 @@ pub async fn emit_due_reminder_notifications(
         };
 
         app_handle
-            .emit("reminder:due", payload)
+            .emit("reminder:due", &payload)
             .map_err(|e| e.to_string())?;
+
+        let _ = push_log::insert_push_log(pool, "reminder", &format!("提醒：{}", row.title), row.content.as_deref(), "desktop", "success", None).await;
 
         sqlx::query("UPDATE reminders SET notified_at = ?, updated_at = ? WHERE id = ? AND notified_at IS NULL")
             .bind(&now_str)

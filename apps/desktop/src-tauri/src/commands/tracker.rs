@@ -8,9 +8,11 @@ use crate::AppState;
 use super::ai;
 use super::settings;
 use super::sidecar;
+use super::push_log;
+use super::validation::is_valid_application_status;
 
 static AUTO_CHECK_MUTEX: Mutex<()> = Mutex::const_new(());
-const AUTO_CHECK_STALE_AFTER_HOURS: i64 = 12;
+const AUTO_CHECK_STALE_AFTER_MINUTES: i64 = 10;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TrackingTarget {
@@ -74,23 +76,6 @@ fn validate_status_url(url: &str) -> Result<(), String> {
 
 fn is_valid_check_frequency(frequency: &str) -> bool {
     matches!(frequency, "manual" | "daily" | "every_6h" | "every_12h")
-}
-
-fn is_valid_application_status(status: &str) -> bool {
-    matches!(
-        status,
-        "to_apply"
-            | "applied"
-            | "received"
-            | "under_review"
-            | "assessment"
-            | "interview"
-            | "final_interview"
-            | "offer"
-            | "rejected"
-            | "withdrawn"
-            | "unknown"
-    )
 }
 
 fn is_valid_login_state(state: &str) -> bool {
@@ -163,6 +148,7 @@ pub async fn create_tracking_target(
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let domain = extract_domain(&input.status_url);
+    let profile_dir = format!("profiles/{}", domain);
     let ats_type = input.ats_type.unwrap_or_else(|| "generic".to_string());
     let check_frequency = input.check_frequency.unwrap_or_else(|| "daily".to_string());
     let current_status = sqlx::query_scalar::<_, String>("SELECT status FROM applications WHERE id = ?")
@@ -173,7 +159,7 @@ pub async fn create_tracking_target(
         .ok_or_else(|| "Application not found".to_string())?;
 
     sqlx::query(
-        "INSERT INTO tracking_targets (id, application_id, domain, status_url, ats_type, check_frequency, current_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO tracking_targets (id, application_id, domain, status_url, ats_type, check_frequency, current_status, profile_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&id)
     .bind(&input.application_id)
@@ -182,6 +168,7 @@ pub async fn create_tracking_target(
     .bind(&ats_type)
     .bind(&check_frequency)
     .bind(&current_status)
+    .bind(&profile_dir)
     .bind(&now)
     .bind(&now)
     .execute(pool)
@@ -292,6 +279,11 @@ pub async fn delete_tracking_target(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
+    sqlx::query("DELETE FROM tracking_runs WHERE target_id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
     sqlx::query("DELETE FROM tracking_targets WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
@@ -337,37 +329,7 @@ pub async fn create_tracking_run(
     state: State<'_, AppState>,
     input: CreateTrackingRunInput,
 ) -> Result<TrackingRun, String> {
-    let pool = &state.db;
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    sqlx::query(
-        "INSERT INTO tracking_runs (id, target_id, started_at, finished_at, status, raw_status, normalized_status, confidence, login_state, error_message, page_hash, ai_used, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&id)
-    .bind(&input.target_id)
-    .bind(&now)
-    .bind(&now)
-    .bind(&input.status)
-    .bind(&input.raw_status)
-    .bind(&input.normalized_status)
-    .bind(&input.confidence)
-    .bind(&input.login_state)
-    .bind(&input.error_message)
-    .bind(&input.page_hash)
-    .bind(input.ai_used.unwrap_or(0))
-    .bind(&now)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let row = sqlx::query_as::<_, TrackingRun>("SELECT * FROM tracking_runs WHERE id = ?")
-        .bind(&id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(row)
+    create_tracking_run_inner(&state.db, &input).await
 }
 
 #[command]
@@ -391,44 +353,7 @@ pub async fn list_tracking_runs(
 pub async fn get_targets_needing_check(
     state: State<'_, AppState>,
 ) -> Result<Vec<TrackingTarget>, String> {
-    let pool = &state.db;
-
-    let targets = sqlx::query_as::<_, TrackingTarget>(
-        "SELECT * FROM tracking_targets WHERE enabled = 1"
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let now = chrono::Utc::now();
-    let mut needs_check = Vec::new();
-
-    for target in targets {
-        let should_check = match target.last_checked_at {
-            None => true,
-            Some(ref last_checked) => {
-                let last = chrono::DateTime::parse_from_rfc3339(last_checked)
-                    .map(|dt| dt.with_timezone(&chrono::Utc))
-                    .unwrap_or(now);
-
-                let duration = now.signed_duration_since(last);
-
-                match target.check_frequency.as_str() {
-                    "manual" => false,
-                    "daily" => duration.num_hours() >= 24,
-                    "every_12h" => duration.num_hours() >= 12,
-                    "every_6h" => duration.num_hours() >= 6,
-                    _ => duration.num_hours() >= 24,
-                }
-            }
-        };
-
-        if should_check {
-            needs_check.push(target);
-        }
-    }
-
-    Ok(needs_check)
+    get_targets_needing_check_inner(&state.db).await
 }
 
 // Inner helper: same logic as get_targets_needing_check but takes pool directly
@@ -558,27 +483,7 @@ async fn update_tracking_target_inner(pool: &SqlitePool, id: &str, input: &Updat
 
 // Inner helper: create event with pool directly
 async fn create_event_inner(pool: &SqlitePool, input: &super::event::CreateEventInput) -> Result<(), String> {
-    let id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
-
-    sqlx::query(
-        "INSERT INTO application_events (id, application_id, event_type, title, content, old_status, new_status, handled_at, handled_action, event_time, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&id)
-    .bind(&input.application_id)
-    .bind(&input.event_type)
-    .bind(&input.title)
-    .bind(&input.content)
-    .bind(&input.old_status)
-    .bind(&input.new_status)
-    .bind(&input.handled_at)
-    .bind(&input.handled_action)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
+    super::event::create_event_inner(pool, input).await?;
     Ok(())
 }
 
@@ -627,8 +532,22 @@ struct AutoCheckNotify {
     application_id: Option<String>,
 }
 
-fn emit_auto_check_notify(app_handle: &AppHandle, notify: AutoCheckNotify) {
-    let _ = app_handle.emit("auto-check:notify", notify);
+fn emit_auto_check_notify(app_handle: &AppHandle, pool: &SqlitePool, notify: AutoCheckNotify) {
+    let _ = app_handle.emit("auto-check:notify", &notify);
+    // Log to push_logs (fire-and-forget)
+    let push_type = match notify.kind.as_str() {
+        "status_change" => "status_change",
+        "login_expired" => "login_issue",
+        "check_failed" => "check_failed",
+        _ => "notification",
+    };
+    let pool = pool.clone();
+    let title = notify.title.clone();
+    let body = notify.body.clone();
+    let kind = push_type.to_string();
+    tokio::spawn(async move {
+        let _ = push_log::insert_push_log(&pool, &kind, &title, Some(&body), "desktop", "success", None).await;
+    });
 }
 
 fn is_invalid_login_state(state: Option<&str>) -> bool {
@@ -757,6 +676,14 @@ pub async fn get_auto_check_status(state: State<'_, AppState>) -> Result<AutoChe
 }
 
 #[command]
+pub async fn reset_auto_check(state: State<'_, AppState>) -> Result<(), String> {
+    let pool = &state.db;
+    settings::save_setting_raw(pool, "auto_check_is_running", "false").await?;
+    settings::save_setting_raw(pool, "auto_check_last_result", "已手动重置").await?;
+    Ok(())
+}
+
+#[command]
 pub async fn run_tracking_target_check(
     app_handle: AppHandle,
     state: State<'_, AppState>,
@@ -836,7 +763,7 @@ async fn normalize_auto_check_running_state(pool: &SqlitePool) -> bool {
     };
 
     let age = chrono::Utc::now().signed_duration_since(started_at);
-    if age > chrono::Duration::hours(AUTO_CHECK_STALE_AFTER_HOURS) {
+    if age > chrono::Duration::minutes(AUTO_CHECK_STALE_AFTER_MINUTES) {
         let _ = settings::save_setting_raw(pool, "auto_check_is_running", "false").await;
         let _ = settings::save_setting_raw(
             pool,
@@ -883,6 +810,7 @@ pub async fn run_auto_check_with_status(
                     "targetId": null,
                     "applicationId": null
                 }));
+                let _ = push_log::insert_push_log(pool, "notification", "自动检查完成", Some(&result_str), "desktop", "success", None).await;
             }
             Ok(result)
         }
@@ -896,6 +824,7 @@ pub async fn run_auto_check_with_status(
                 "targetId": null,
                 "applicationId": null
             }));
+            let _ = push_log::insert_push_log(pool, "check_failed", "自动检查失败", Some(&result_str), "desktop", "failed", Some(&e)).await;
             Err(e)
         }
     }
@@ -1005,94 +934,53 @@ async fn run_checks_for_targets(
 
         println!("[{}] Checking domain: {} ({} targets)", log_prefix, domain, domain_targets.len());
 
-        // Check each target sequentially with delay between domains
-        for target in domain_targets {
-            let profile_dir = target.profile_dir.clone().unwrap_or_else(|| format!("profiles/{}", target.domain));
-
-            // Call sidecar with retry
-            let mut last_error = String::new();
-            let mut res = None;
-            for attempt in 1..=2 {
-                match sidecar::run_sidecar_check(app_handle.clone(), target.id.clone(), target.status_url.clone(), profile_dir.clone()).await {
-                    Ok(r) => {
-                        res = Some(r);
-                        break;
-                    }
-                    Err(e) => {
-                        last_error = e;
-                        if attempt < 2 {
-                            println!("[{}] Retry {} for {}: {}", log_prefix, attempt, target.id, last_error);
-                            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-                        }
-                    }
-                }
+        // Use batch check for all targets on this domain (one browser session)
+        let profile_dir = domain_targets[0].profile_dir.clone()
+            .unwrap_or_else(|| format!("profiles/{}", domain));
+        let batch_targets: Vec<sidecar::BatchTarget> = domain_targets.iter().map(|t| {
+            sidecar::BatchTarget {
+                target_id: t.id.clone(),
+                status_url: t.status_url.clone(),
             }
+        }).collect();
 
-            let res = match res {
-                Some(r) => r,
-                None => {
-                    println!("[{}] Sidecar error for {}: {}", log_prefix, target.id, last_error);
+        let batch_results = match sidecar::run_sidecar_batch_check(
+            app_handle.clone(), domain.clone(), profile_dir, batch_targets,
+        ).await {
+            Ok(resp) => resp.results,
+            Err(e) => {
+                println!("[{}] Batch check error for domain {}: {}", log_prefix, domain, e);
+                for target in domain_targets {
                     result.failed += 1;
-                    let now = chrono::Utc::now().to_rfc3339();
-
-                    // Record failed run
-                    let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
-                        target_id: target.id.clone(),
-                        status: "failed".to_string(),
-                        raw_status: None,
-                        normalized_status: None,
-                        confidence: None,
-                        login_state: None,
-                        error_message: Some(last_error.clone()),
-                        page_hash: None,
-                        ai_used: None,
-                    }).await;
-
-                    let _ = update_tracking_target_inner(pool, &target.id, &UpdateTrackingTargetInput {
-                        status_url: None,
-                        ats_type: None,
-                        enabled: None,
-                        check_frequency: None,
-                        current_status: None,
-                        last_status: None,
-                        login_state: None,
-                        last_checked_at: Some(now),
-                        last_success_at: None,
-                        last_error: Some(last_error.clone()),
-                        last_text_hash: None,
-                        profile_dir: None,
-                    }).await;
-
-                    let _ = create_event_inner(pool, &super::event::CreateEventInput {
-                        application_id: target.application_id.clone(),
-                        event_type: "check_failed".to_string(),
-                        title: "状态检查失败".to_string(),
-                        content: Some(last_error.clone()),
-                        old_status: None,
-                        new_status: None,
-                        handled_at: None,
-                        handled_action: None,
-                    }).await;
-
-                    let body = if let Some(app) = get_application_summary(pool, &target.application_id).await {
-                        format!("{} - {}: {}", app.company_name, app.job_title, last_error)
-                    } else {
-                        format!("{}: {}", target.domain, last_error)
-                    };
-                    emit_auto_check_notify(app_handle, AutoCheckNotify {
-                        kind: "check_failed".to_string(),
-                        title: "检查失败".to_string(),
-                        body,
-                        target_id: Some(target.id.clone()),
-                        application_id: Some(target.application_id.clone()),
-                    });
-
                     result.items.push(ManualCheckItem {
                         target_id: target.id.clone(),
                         success: false,
-                        message: last_error,
+                        message: format!("批量检查失败: {}", e),
                     });
+                }
+                continue;
+            }
+        };
 
+        // Build a map of target_id -> sidecar result
+        let mut res_map: std::collections::HashMap<String, sidecar::SidecarCheckResponse> = std::collections::HashMap::new();
+        for r in batch_results {
+            if let Some(ref tid) = r.target_id {
+                res_map.insert(tid.clone(), r);
+            }
+        }
+
+        // Process each target's result
+        for target in domain_targets {
+            let res = match res_map.remove(&target.id) {
+                Some(r) => r,
+                None => {
+                    result.failed += 1;
+                    result.items.push(ManualCheckItem {
+                        target_id: target.id.clone(),
+                        success: false,
+                        message: "批量检查未返回该目标结果".to_string(),
+                    });
                     continue;
                 }
             };
@@ -1144,7 +1032,7 @@ async fn run_checks_for_targets(
                 } else {
                     format!("{}: {}", target.domain, error_message)
                 };
-                emit_auto_check_notify(app_handle, AutoCheckNotify {
+                emit_auto_check_notify(app_handle, pool, AutoCheckNotify {
                     kind: "check_failed".to_string(),
                     title: "检查失败".to_string(),
                     body,
@@ -1176,7 +1064,7 @@ async fn run_checks_for_targets(
                 login_state: res.login_state.clone(),
                 last_checked_at: Some(now.clone()),
                 last_success_at: Some(now.clone()),
-                last_error: Some("".to_string()),
+                last_error: None,
                 last_text_hash: res.text_hash.clone(),
                 profile_dir: None,
             };
@@ -1220,7 +1108,7 @@ async fn run_checks_for_targets(
                             handled_action: None,
                         }).await;
 
-                        emit_auto_check_notify(app_handle, AutoCheckNotify {
+                        emit_auto_check_notify(app_handle, pool, AutoCheckNotify {
                             kind: "login_expired".to_string(),
                             title,
                             body: content,
@@ -1289,7 +1177,7 @@ async fn run_checks_for_targets(
                             } else {
                                 format!("{}: {} -> {}", target.domain, old_status, new_status)
                             };
-                            emit_auto_check_notify(app_handle, AutoCheckNotify {
+                            emit_auto_check_notify(app_handle, pool, AutoCheckNotify {
                                 kind: "status_change".to_string(),
                                 title: "状态变化".to_string(),
                                 body,
@@ -1413,7 +1301,7 @@ async fn run_checks_for_targets(
                                     } else {
                                         format!("{}: {} -> {}", target.domain, old_status, new_status)
                                     };
-                                    emit_auto_check_notify(app_handle, AutoCheckNotify {
+                                    emit_auto_check_notify(app_handle, pool, AutoCheckNotify {
                                         kind: "status_change".to_string(),
                                         title: "状态变化".to_string(),
                                         body,
@@ -1500,16 +1388,11 @@ async fn run_checks_for_targets(
             if !is_login_valid {
                 break;
             }
-
-            // Delay between checks on the same domain
-            if delay_between_targets {
-                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-            }
         }
 
-        // Delay between domains
+        // Brief delay between domains
         if delay_between_targets {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     }
 

@@ -2,9 +2,9 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import { Plus, Search, Trash2, Edit2, ExternalLink, Filter, BriefcaseBusiness, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import type { Application, ApplicationStatus } from "@applyradar/shared";
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, ALL_STATUSES } from "@applyradar/shared";
-import { applicationService } from "../services";
-import { confirmDelete } from "../services/dialogService";
+import { applicationService, confirmDelete } from "../services";
 import ApplicationForm from "../components/ApplicationForm";
+import { getActiveWaitingDays, hasFinalResult } from "../utils/applications";
 
 type SortField = "company_name" | "job_title" | "status" | "priority" | "applied_at" | "updated_at";
 type SortDirection = "asc" | "desc";
@@ -70,14 +70,6 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
     loadApplications();
   };
 
-  const getDaysWaiting = (app: Application) => {
-    if (!app.applied_at) return null;
-    const days = Math.floor(
-      (Date.now() - new Date(app.applied_at).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    return days;
-  };
-
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(prev => prev === "asc" ? "desc" : "asc");
@@ -106,11 +98,12 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
           aVal = a.status;
           bVal = b.status;
           break;
-        case "priority":
+        case "priority": {
           const priorityOrder = { high: 0, medium: 1, low: 2 };
           aVal = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 1;
           bVal = priorityOrder[b.priority as keyof typeof priorityOrder] ?? 1;
           break;
+        }
         case "applied_at":
           aVal = a.applied_at || "";
           bVal = b.applied_at || "";
@@ -136,11 +129,10 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
   };
 
   return (
-    <div className="p-4">
+    <div className="px-4 pb-4 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-900">求职记录</h1>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -148,7 +140,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
               placeholder="搜索公司或岗位..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-64 pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all"
+              className="w-56 pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all sm:w-64"
             />
           </div>
           <div className="relative">
@@ -187,43 +179,43 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <table className="w-full min-w-[760px]">
           <thead>
             <tr className="border-b border-gray-100">
               <th
                 onClick={() => handleSort("company_name")}
-                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+                className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
                 <div className="flex items-center gap-1">公司 <SortIcon field="company_name" /></div>
               </th>
               <th
                 onClick={() => handleSort("job_title")}
-                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+                className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
                 <div className="flex items-center gap-1">岗位 <SortIcon field="job_title" /></div>
               </th>
               <th
                 onClick={() => handleSort("status")}
-                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+                className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
                 <div className="flex items-center gap-1">状态 <SortIcon field="status" /></div>
               </th>
               <th
                 onClick={() => handleSort("priority")}
-                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+                className="hidden whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600 xl:table-cell"
               >
                 <div className="flex items-center gap-1">优先级 <SortIcon field="priority" /></div>
               </th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">来源</th>
+              <th className="hidden whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 xl:table-cell">来源</th>
               <th
                 onClick={() => handleSort("applied_at")}
-                className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-gray-600 select-none"
+                className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
                 <div className="flex items-center gap-1">投递日期 <SortIcon field="applied_at" /></div>
               </th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">等待天数</th>
-              <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">操作</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">等待天数</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -245,58 +237,60 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
               </tr>
             ) : (
               sortedApplications.map((app) => {
-                const days = getDaysWaiting(app);
+                const days = getActiveWaitingDays(app);
                 return (
                   <tr
                     key={app.id}
                     onClick={() => onSelectApp?.(app.id)}
                     className="border-b border-gray-50 hover:bg-[#F7F4EC] transition-colors cursor-pointer group"
                   >
-                    <td className="px-5 py-4">
+                    <td className="px-4 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-stone-100 to-stone-200 flex items-center justify-center text-stone-600 font-bold text-xs flex-shrink-0">
                           {app.company_name.slice(0, 1)}
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-gray-900">{app.company_name}</p>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">{app.company_name}</p>
                           {app.location && (
-                            <p className="text-xs text-gray-400">{app.location}</p>
+                            <p className="truncate text-xs text-gray-400">{app.location}</p>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-4">
-                      <p className="text-sm text-gray-700">{app.job_title}</p>
+                    <td className="px-4 py-3.5">
+                      <p className="max-w-[220px] truncate text-sm text-gray-700">{app.job_title}</p>
                       {app.salary_range && (
-                        <p className="text-xs text-gray-400">{app.salary_range}</p>
+                        <p className="max-w-[220px] truncate text-xs text-gray-400">{app.salary_range}</p>
                       )}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-4 py-3.5">
                       <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium ${
+                        className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-lg text-xs font-medium ${
                           STATUS_COLORS[app.status as ApplicationStatus] || STATUS_COLORS.unknown
                         }`}
                       >
                         {STATUS_LABELS[app.status as ApplicationStatus] || app.status}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="hidden px-4 py-3.5 xl:table-cell">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                        className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded text-xs font-medium ${
                           PRIORITY_COLORS[app.priority as keyof typeof PRIORITY_COLORS] || ""
                         }`}
                       >
                         {PRIORITY_LABELS[app.priority as keyof typeof PRIORITY_LABELS] || app.priority}
                       </span>
                     </td>
-                    <td className="px-5 py-4 text-sm text-gray-500">{app.source || "-"}</td>
-                    <td className="px-5 py-4 text-sm text-gray-500">
+                    <td className="hidden max-w-[120px] truncate px-4 py-3.5 text-sm text-gray-500 xl:table-cell">{app.source || "-"}</td>
+                    <td className="whitespace-nowrap px-4 py-3.5 text-sm text-gray-500">
                       {app.applied_at
                         ? new Date(app.applied_at).toLocaleDateString("zh-CN")
                         : "-"}
                     </td>
-                    <td className="px-5 py-4">
-                      {days !== null ? (
+                    <td className="whitespace-nowrap px-4 py-3.5">
+                      {hasFinalResult(app.status) ? (
+                        <span className="text-sm text-gray-300">已结束</span>
+                      ) : days !== null ? (
                         <span className={`text-sm font-medium ${days > 14 ? "text-amber-600" : days > 7 ? "text-gray-600" : "text-gray-400"}`}>
                           {days} 天
                         </span>
@@ -304,7 +298,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
                         <span className="text-sm text-gray-300">-</span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right">
+                    <td className="whitespace-nowrap px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         {app.job_url && (
                           <a

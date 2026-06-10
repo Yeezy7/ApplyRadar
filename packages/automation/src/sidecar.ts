@@ -1,8 +1,12 @@
 import { createInterface } from "node:readline";
 import { chromium, type BrowserContext } from "playwright";
 import fs from "node:fs";
+import path from "node:path";
 import { createHash } from "node:crypto";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 interface CheckRequest {
   command: string;
@@ -36,19 +40,134 @@ interface BatchCheckResponse {
 }
 
 let context: BrowserContext | null = null;
+let activeProfileDir: string | null = null;
+const STORAGE_STATE_FILENAME = "applyradar-storage-state.json";
+const LOGIN_ACTIVE_FILENAME = "applyradar-login-active";
+const LOGIN_ACTIVE_STALE_MS = 2 * 60 * 60 * 1000;
+
+interface StoredOrigin {
+  origin: string;
+  localStorage?: Array<{ name: string; value: string }>;
+}
 
 function log(msg: string) {
   process.stderr.write(`[sidecar] ${msg}\n`);
 }
 
-function killExistingChrome(profileDir: string) {
+async function killExistingChrome(profileDir: string) {
   try {
-    const escapedPath = profileDir.replace(/\s/g, "\\ ");
-    execSync(`pkill -f "${escapedPath}" 2>/dev/null || true`, { timeout: 5000 });
-    execSync("sleep 1", { timeout: 3000 });
-  } catch (e) {
+    await execFileAsync("pkill", ["-f", "--", profileDir], { timeout: 5000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1000));
+  } catch {
     // Ignore errors
   }
+}
+
+function getStorageStatePath(profileDir: string) {
+  return path.join(profileDir, STORAGE_STATE_FILENAME);
+}
+
+function getLoginActivePath(profileDir: string) {
+  return path.join(profileDir, LOGIN_ACTIVE_FILENAME);
+}
+
+function markLoginActive(profileDir: string) {
+  try {
+    fs.mkdirSync(profileDir, { recursive: true });
+    fs.writeFileSync(getLoginActivePath(profileDir), String(Date.now()));
+  } catch (e: any) {
+    log(`Failed to mark login active: ${e.message}`);
+  }
+}
+
+function clearLoginActive(profileDir: string) {
+  try {
+    fs.rmSync(getLoginActivePath(profileDir), { force: true });
+  } catch (e: any) {
+    log(`Failed to clear login active marker: ${e.message}`);
+  }
+}
+
+function isLoginActive(profileDir: string) {
+  try {
+    const markerPath = getLoginActivePath(profileDir);
+    if (!fs.existsSync(markerPath)) return false;
+
+    const stat = fs.statSync(markerPath);
+    const ageMs = Date.now() - stat.mtimeMs;
+    if (ageMs > LOGIN_ACTIVE_STALE_MS) {
+      clearLoginActive(profileDir);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function restoreStorageState(ctx: BrowserContext, profileDir: string) {
+  const storageStatePath = getStorageStatePath(profileDir);
+  if (!fs.existsSync(storageStatePath)) return;
+
+  try {
+    const raw = fs.readFileSync(storageStatePath, "utf8");
+    const state = JSON.parse(raw) as {
+      cookies?: Parameters<BrowserContext["addCookies"]>[0];
+      origins?: StoredOrigin[];
+    };
+    if (Array.isArray(state.cookies) && state.cookies.length > 0) {
+      await ctx.addCookies(state.cookies);
+      log(`Restored ${state.cookies.length} cookies from storage state`);
+    }
+    if (Array.isArray(state.origins) && state.origins.length > 0) {
+      await ctx.addInitScript((origins: StoredOrigin[]) => {
+        const current = origins.find((item) => item.origin === window.location.origin);
+        if (!current?.localStorage) return;
+        for (const entry of current.localStorage) {
+          window.localStorage.setItem(entry.name, entry.value);
+        }
+      }, state.origins);
+      log(`Prepared localStorage restore for ${state.origins.length} origins`);
+    }
+  } catch (e: any) {
+    log(`Failed to restore storage state: ${e.message}`);
+  }
+}
+
+async function persistStorageState(ctx: BrowserContext, profileDir: string) {
+  try {
+    fs.mkdirSync(profileDir, { recursive: true });
+    await ctx.storageState({ path: getStorageStatePath(profileDir) });
+  } catch (e: any) {
+    log(`Failed to persist storage state: ${e.message}`);
+  }
+}
+
+function keepStorageStateFresh(ctx: BrowserContext, profileDir: string) {
+  const persistSoon = () => {
+    setTimeout(() => {
+      void persistStorageState(ctx, profileDir);
+    }, 300);
+  };
+
+  const wirePage = (page: any) => {
+    page.on("domcontentloaded", persistSoon);
+    page.on("load", persistSoon);
+    page.on("framenavigated", persistSoon);
+  };
+
+  for (const page of ctx.pages()) {
+    wirePage(page);
+  }
+  ctx.on("page", wirePage);
+
+  const timer = setInterval(() => {
+    void persistStorageState(ctx, profileDir);
+  }, 2000);
+
+  ctx.on("close", () => {
+    clearInterval(timer);
+  });
 }
 
 async function extractPageText(page: any): Promise<string> {
@@ -310,8 +429,9 @@ async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
     // Ensure profile directory exists
     fs.mkdirSync(profileDir, { recursive: true });
 
-    // Kill any existing Chrome processes using this profile
-    killExistingChrome(profileDir);
+    // Kill any existing Chrome processes and clear stale markers
+    await killExistingChrome(profileDir);
+    clearLoginActive(profileDir);
 
     // Close any existing context
     if (context) {
@@ -324,6 +444,7 @@ async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
       headless: true,
       viewport: { width: 1280, height: 800 },
     });
+    await restoreStorageState(context, profileDir);
 
     // Navigate to the page
     const page = await context.newPage();
@@ -346,6 +467,7 @@ async function handleCheck(req: CheckRequest): Promise<CheckResponse> {
     const loginState = detectLoginState(page.url(), pageText || "");
     const ruleStatus = loginState === "valid" ? extractStatusFromText(pageText || "") : null;
 
+    await persistStorageState(context, profileDir);
     await context.close();
     context = null;
 
@@ -392,8 +514,9 @@ async function handleBatchCheck(req: CheckRequest): Promise<BatchCheckResponse> 
     // Ensure profile directory exists
     fs.mkdirSync(profileDir, { recursive: true });
 
-    // Kill any existing Chrome processes
-    killExistingChrome(profileDir);
+    // Kill any existing Chrome processes and clear stale markers
+    await killExistingChrome(profileDir);
+    clearLoginActive(profileDir);
 
     // Close any existing context
     if (context) {
@@ -407,6 +530,7 @@ async function handleBatchCheck(req: CheckRequest): Promise<BatchCheckResponse> 
       headless: true,
       viewport: { width: 1280, height: 800 },
     });
+    await restoreStorageState(context, profileDir);
 
     // Check each target
     for (const target of targets) {
@@ -440,6 +564,8 @@ async function handleBatchCheck(req: CheckRequest): Promise<BatchCheckResponse> 
           textHash,
           pageTitle,
         });
+
+        await persistStorageState(context, profileDir);
 
         // Close the page after extracting
         await page.close().catch(() => {});
@@ -494,7 +620,11 @@ async function handleOpenLogin(req: CheckRequest): Promise<CheckResponse> {
     }
 
     fs.mkdirSync(profileDir, { recursive: true });
-    killExistingChrome(profileDir);
+    // Kill any existing Chrome first, then clear stale marker
+    await killExistingChrome(profileDir);
+    clearLoginActive(profileDir);
+    activeProfileDir = profileDir;
+    markLoginActive(profileDir);
 
     if (context) {
       await context.close().catch(() => {});
@@ -505,12 +635,21 @@ async function handleOpenLogin(req: CheckRequest): Promise<CheckResponse> {
       headless: false,
       viewport: { width: 1280, height: 800 },
     });
+    await restoreStorageState(context, profileDir);
+    keepStorageStateFresh(context, profileDir);
 
     const page = await context.newPage();
     await page.goto(statusUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await persistStorageState(context, profileDir);
 
     return new Promise<CheckResponse>((resolve) => {
+      const loginMarkerTimer = setInterval(() => {
+        markLoginActive(profileDir);
+      }, 2000);
+
       context!.on("close", () => {
+        clearInterval(loginMarkerTimer);
+        clearLoginActive(profileDir);
         context = null;
         resolve({
           success: true,
@@ -523,6 +662,9 @@ async function handleOpenLogin(req: CheckRequest): Promise<CheckResponse> {
     if (context) {
       await context.close().catch(() => {});
       context = null;
+    }
+    if (req.profileDir) {
+      clearLoginActive(req.profileDir);
     }
     return {
       success: false,
@@ -613,16 +755,24 @@ rl.on("line", async (line) => {
     const output = JSON.stringify(res);
     log(`Writing output: ${output.slice(0, 100)}...`);
     process.stdout.write(output + "\n");
+    // Exit after one-shot commands (open_login stays alive until browser closes)
+    if (req.command !== "open_login") {
+      process.exit(0);
+    }
   } catch (e: any) {
     log(`Parse error: ${e.message}`);
     process.stdout.write(
       JSON.stringify({ success: false, error: `Parse error: ${e}` }) + "\n"
     );
+    process.exit(1);
   }
 });
 
 rl.on("close", () => {
   log("stdin closed");
+  if (activeProfileDir) {
+    clearLoginActive(activeProfileDir);
+  }
   if (context) {
     context.close().catch(() => {});
   }

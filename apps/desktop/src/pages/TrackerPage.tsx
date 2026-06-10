@@ -24,7 +24,9 @@ export default function TrackerPage() {
   const [targetRuns, setTargetRuns] = useState<Map<string, TrackingRun[]>>(new Map());
   const [applications, setApplications] = useState<Map<string, Application>>(new Map());
   const [runningAutoCheck, setRunningAutoCheck] = useState(false);
+  const [resettingAutoCheck, setResettingAutoCheck] = useState(false);
   const [summaryResult, setSummaryResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [openingLoginTargetId, setOpeningLoginTargetId] = useState<string | null>(null);
 
   const loadTargets = useCallback(async () => {
     setLoading(true);
@@ -174,7 +176,22 @@ export default function TrackerPage() {
     }
   };
 
+  const handleResetAutoCheck = async () => {
+    setResettingAutoCheck(true);
+    try {
+      await trackerService.resetAutoCheck();
+      setSummaryResult({ success: true, message: "已重置自动检查状态" });
+      await loadAutoCheckStatus();
+    } catch (e) {
+      setSummaryResult({ success: false, message: `重置失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setResettingAutoCheck(false);
+    }
+  };
+
   const handleOpenLogin = async (target: TrackingTarget) => {
+    if (openingLoginTargetId === target.id) return;
+    setOpeningLoginTargetId(target.id);
     try {
       const profileDir = target.profile_dir || `profiles/${target.domain}`;
       const result = await sidecarService.openForLogin(target.status_url, profileDir);
@@ -186,6 +203,9 @@ export default function TrackerPage() {
           next.set(target.id, { success: false, message: result.error || "打开登录页面失败" });
           return next;
         });
+      } else {
+        setSummaryResult({ success: true, message: "登录窗口已关闭，已尝试保存该站点登录态" });
+        await loadTargets();
       }
     } catch (e) {
       console.error("Failed to open login:", e);
@@ -195,6 +215,8 @@ export default function TrackerPage() {
         next.set(target.id, { success: false, message: `打开登录页面失败: ${e}` });
         return next;
       });
+    } finally {
+      setOpeningLoginTargetId(null);
     }
   };
 
@@ -276,18 +298,12 @@ export default function TrackerPage() {
     typeof confidence === "number" ? `${Math.round(confidence * 100)}%` : "-";
 
   return (
-    <div className="p-8">
+    <div className="px-4 pb-4 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">状态监控</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            自动检查求职状态页，追踪进度变化
-          </p>
-        </div>
+      <div className="mb-3 flex items-center justify-end">
         <button
           onClick={handleCheckAll}
-          disabled={checking.size > 0 || runningAutoCheck}
+          disabled={checking.size > 0 || runningAutoCheck || openingLoginTargetId !== null}
           className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm font-medium hover:bg-stone-800 disabled:opacity-50 transition-all shadow-sm"
         >
           {checking.size > 0 ? (
@@ -299,7 +315,7 @@ export default function TrackerPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <div className="rounded-xl border border-gray-100 bg-white px-4 py-3">
           <div className="text-xs text-gray-400">启用目标</div>
           <div className="mt-1 text-2xl font-semibold text-gray-900">{enabledTargets}</div>
@@ -357,14 +373,25 @@ export default function TrackerPage() {
               </>
             )}
           </div>
-          <button
-            onClick={handleRunAutoCheck}
-            disabled={runningAutoCheck || checking.size > 0 || autoCheckStatus.isRunning}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${runningAutoCheck ? "animate-spin" : ""}`} />
-            立即自动检查
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {autoCheckStatus.isRunning && !runningAutoCheck && (
+              <button
+                onClick={handleResetAutoCheck}
+                disabled={resettingAutoCheck}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                {resettingAutoCheck ? "重置中..." : "重置状态"}
+              </button>
+            )}
+            <button
+              onClick={handleRunAutoCheck}
+              disabled={runningAutoCheck || checking.size > 0 || autoCheckStatus.isRunning}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${runningAutoCheck ? "animate-spin" : ""}`} />
+              立即自动检查
+            </button>
+          </div>
         </div>
       )}
 
@@ -379,17 +406,17 @@ export default function TrackerPage() {
       )}
 
       {/* Target list */}
-      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <table className="w-full min-w-[920px]">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">投递</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">状态页</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">当前状态</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">登录状态</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">检查频率</th>
-              <th className="text-left px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">上次检查</th>
-              <th className="text-right px-5 py-3.5 text-xs font-semibold text-gray-400 uppercase tracking-wider">操作</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">投递</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">状态页</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">当前状态</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">登录状态</th>
+              <th className="hidden whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 xl:table-cell">检查频率</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">上次检查</th>
+              <th className="whitespace-nowrap px-4 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -408,6 +435,7 @@ export default function TrackerPage() {
             ) : (
               targets.map((target) => {
                 const isChecking = checking.has(target.id);
+                const isOpeningLogin = openingLoginTargetId === target.id;
                 const result = results.get(target.id);
                 const app = applications.get(target.application_id);
                 const runs = targetRuns.get(target.id) || [];
@@ -435,7 +463,7 @@ export default function TrackerPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                          className={`inline-block whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium ${
                             STATUS_COLORS[target.current_status as keyof typeof STATUS_COLORS] || STATUS_COLORS.unknown
                           }`}
                         >
@@ -454,7 +482,7 @@ export default function TrackerPage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
+                      <td className="hidden whitespace-nowrap px-4 py-3 text-sm text-gray-500 xl:table-cell">
                         {target.check_frequency === "manual" ? "手动" :
                          target.check_frequency === "daily" ? "每天" :
                          target.check_frequency === "every_12h" ? "每12小时" :
@@ -471,7 +499,7 @@ export default function TrackerPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => toggleExpand(target.id)}
@@ -483,15 +511,16 @@ export default function TrackerPage() {
                           </button>
                           <button
                             onClick={() => handleOpenLogin(target)}
-                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors"
+                            disabled={isOpeningLogin}
+                            className="flex items-center gap-1 px-2 py-1.5 text-xs text-gray-500 hover:text-stone-700 rounded transition-colors disabled:opacity-50"
                             title="打开登录"
                           >
                             <ExternalLink className="w-3 h-3" />
-                            登录
+                            {isOpeningLogin ? "打开中" : "登录"}
                           </button>
                           <button
                             onClick={() => handleCheckSingle(target)}
-                            disabled={isChecking || runningAutoCheck}
+                            disabled={isChecking || runningAutoCheck || openingLoginTargetId !== null}
                             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-stone-700 bg-stone-50 rounded-md hover:bg-stone-100 disabled:opacity-50 transition-colors"
                           >
                             {isChecking ? (
@@ -527,16 +556,16 @@ export default function TrackerPage() {
                               暂无检查历史
                             </div>
                           ) : (
-                            <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-                              <table className="w-full">
+                            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                              <table className="w-full min-w-[760px]">
                                 <thead>
                                   <tr className="border-b border-gray-100 bg-gray-50">
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">时间</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">结果</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">登录</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">识别状态</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">置信度</th>
-                                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-400">说明</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">时间</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">结果</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">登录</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">识别状态</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">置信度</th>
+                                    <th className="whitespace-nowrap px-3 py-2 text-left text-xs font-medium text-gray-400">说明</th>
                                   </tr>
                                 </thead>
                                 <tbody>

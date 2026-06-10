@@ -69,6 +69,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const [targetError, setTargetError] = useState("");
   const [submittingTarget, setSubmittingTarget] = useState(false);
   const [checkingTarget, setCheckingTarget] = useState<string | null>(null);
+  const [openingLoginTarget, setOpeningLoginTarget] = useState<string | null>(null);
   const [checkResults, setCheckResults] = useState<Map<string, { success: boolean; message: string }>>(new Map());
   const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
   const [showReminderForm, setShowReminderForm] = useState(false);
@@ -246,6 +247,8 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   };
 
   const handleOpenLogin = async (target: TrackingTarget) => {
+    if (openingLoginTarget === target.id) return;
+    setOpeningLoginTarget(target.id);
     try {
       const profileDir = target.profile_dir || `profiles/${target.domain}`;
       const result = await sidecarService.openForLogin(target.status_url, profileDir);
@@ -256,6 +259,9 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
           return next;
         });
         setNotice({ success: false, message: result.error || "打开登录页面失败" });
+      } else {
+        setNotice({ success: true, message: "登录窗口已关闭，已尝试保存该站点登录态" });
+        await loadData();
       }
     } catch (e) {
       console.error("Failed to open login:", e);
@@ -265,6 +271,8 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
         return next;
       });
       setNotice({ success: false, message: `打开登录页面失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setOpeningLoginTarget(null);
     }
   };
 
@@ -416,9 +424,8 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   // Loading state
   if (loading && !app) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="animate-pulse space-y-6">
-          <div className="h-8 w-48 bg-gray-200 rounded" />
           <div className="h-64 bg-gray-200 rounded-2xl" />
           <div className="h-48 bg-gray-200 rounded-2xl" />
         </div>
@@ -429,7 +436,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   // Error state
   if (error) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="text-center py-20">
           <p className="text-sm text-red-500 mb-3">{error}</p>
           <button
@@ -446,7 +453,7 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   // Not found
   if (!app) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="text-center py-20">
           <p className="text-sm text-gray-500 mb-3">求职记录未找到</p>
           <button
@@ -463,20 +470,16 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
   const isOverdue = (r: Reminder) => !r.is_done && new Date(r.remind_at) < new Date();
 
   return (
-    <div className="p-5 max-w-5xl">
+    <div className="max-w-5xl px-4 pb-4 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
+      <div className="mb-4 flex items-center justify-between">
+        <div>
           <button
             onClick={onBack}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{app.company_name}</h1>
-            <p className="text-sm text-gray-500">{app.job_title}</p>
-          </div>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -519,6 +522,10 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
 
       {/* Basic Info */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
+        <div className="mb-5 border-b border-gray-50 pb-4">
+          <div className="truncate text-lg font-semibold text-gray-900">{app.company_name}</div>
+          <div className="mt-0.5 truncate text-sm text-gray-500">{app.job_title}</div>
+        </div>
         <h2 className="text-sm font-semibold text-gray-700 mb-4">基本信息</h2>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
@@ -698,17 +705,23 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
                   {t.last_error && (
                     <p className="text-xs text-red-500 mt-1 truncate">{t.last_error}</p>
                   )}
+                  {checkResults.has(t.id) && (
+                    <div className={`text-xs mt-1.5 ${checkResults.get(t.id)?.success ? "text-green-600" : "text-red-500"}`}>
+                      {checkResults.get(t.id)?.message}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1 ml-3">
                   <button
                     onClick={() => handleOpenLogin(t)}
-                    className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
+                    disabled={openingLoginTarget === t.id}
+                    className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors disabled:opacity-50"
                   >
-                    登录
+                    {openingLoginTarget === t.id ? "打开中" : "登录"}
                   </button>
                   <button
                     onClick={() => handleCheckTarget(t)}
-                    disabled={checkingTarget === t.id}
+                    disabled={checkingTarget === t.id || openingLoginTarget !== null}
                     className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 rounded-lg disabled:opacity-50 transition-colors"
                   >
                     {checkingTarget === t.id ? (
@@ -725,12 +738,6 @@ export default function ApplicationDetailPage({ applicationId, onBack }: Props) 
                     <Trash2 className="w-3 h-3" />
                   </button>
                 </div>
-                {/* Check result */}
-                {checkResults.has(t.id) && (
-                  <div className={`text-xs mt-1.5 ${checkResults.get(t.id)?.success ? "text-green-600" : "text-red-500"}`}>
-                    {checkResults.get(t.id)?.message}
-                  </div>
-                )}
               </div>
             ))}
           </div>

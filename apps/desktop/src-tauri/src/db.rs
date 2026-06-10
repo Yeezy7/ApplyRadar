@@ -156,6 +156,21 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
             updated_at TEXT NOT NULL
         );
         "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS push_logs (
+            id TEXT PRIMARY KEY,
+            push_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            detail TEXT,
+            channel TEXT NOT NULL DEFAULT 'desktop',
+            status TEXT NOT NULL DEFAULT 'success',
+            error_message TEXT,
+            created_at TEXT NOT NULL
+        );
+        "#,
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_push_logs_created ON push_logs(created_at DESC);
+        "#,
     ];
 
     for sql in migrations {

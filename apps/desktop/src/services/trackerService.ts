@@ -92,6 +92,10 @@ export async function getAutoCheckStatus(): Promise<AutoCheckStatus> {
   return invoke("get_auto_check_status");
 }
 
+export async function resetAutoCheck(): Promise<void> {
+  return invoke("reset_auto_check");
+}
+
 export async function runTrackingTargetCheck(targetId: string): Promise<ManualCheckResult> {
   return invoke("run_tracking_target_check", { targetId });
 }

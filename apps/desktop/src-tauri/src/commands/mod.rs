@@ -1,3 +1,4 @@
+pub mod validation;
 pub mod application;
 pub mod tracker;
 pub mod event;
@@ -5,3 +6,5 @@ pub mod reminder;
 pub mod ai;
 pub mod sidecar;
 pub mod settings;
+pub mod email;
+pub mod push_log;

@@ -4,6 +4,7 @@ use tauri::command;
 use tauri::State;
 
 use crate::AppState;
+use super::validation::is_valid_application_status;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ApplicationEvent {
@@ -41,23 +42,6 @@ fn is_valid_event_action(action: &str) -> bool {
     matches!(action, "accepted" | "dismissed")
 }
 
-fn is_valid_application_status(status: &str) -> bool {
-    matches!(
-        status,
-        "to_apply"
-            | "applied"
-            | "received"
-            | "under_review"
-            | "assessment"
-            | "interview"
-            | "final_interview"
-            | "offer"
-            | "rejected"
-            | "withdrawn"
-            | "unknown"
-    )
-}
-
 fn validate_optional_status(status: &Option<String>) -> Result<(), String> {
     if let Some(status) = status {
         if !is_valid_application_status(status) {
@@ -89,14 +73,7 @@ fn is_resolvable_status_event(event: &ApplicationEvent) -> bool {
         && event.new_status.is_some()
 }
 
-#[command]
-pub async fn create_event(
-    state: State<'_, AppState>,
-    input: CreateEventInput,
-) -> Result<ApplicationEvent, String> {
-    validate_event_input(&input)?;
-
-    let pool = &state.db;
+pub async fn create_event_inner(pool: &SqlitePool, input: &CreateEventInput) -> Result<String, String> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -117,6 +94,19 @@ pub async fn create_event(
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    Ok(id)
+}
+
+#[command]
+pub async fn create_event(
+    state: State<'_, AppState>,
+    input: CreateEventInput,
+) -> Result<ApplicationEvent, String> {
+    validate_event_input(&input)?;
+
+    let pool = &state.db;
+    let id = create_event_inner(pool, &input).await?;
 
     let row = sqlx::query_as::<_, ApplicationEvent>("SELECT * FROM application_events WHERE id = ?")
         .bind(&id)

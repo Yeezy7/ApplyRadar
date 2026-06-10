@@ -14,6 +14,13 @@ pub struct AppSettings {
     pub check_frequency: String,
     pub notifications_enabled: bool,
     pub auto_check_enabled: bool,
+    pub smtp_host: String,
+    pub smtp_port: String,
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub smtp_recipient: String,
+    pub email_report_enabled: bool,
+    pub email_report_time: String,
 }
 
 impl Default for AppSettings {
@@ -25,6 +32,13 @@ impl Default for AppSettings {
             check_frequency: "daily".to_string(),
             notifications_enabled: true,
             auto_check_enabled: true,
+            smtp_host: String::new(),
+            smtp_port: "465".to_string(),
+            smtp_username: String::new(),
+            smtp_password: String::new(),
+            smtp_recipient: String::new(),
+            email_report_enabled: false,
+            email_report_time: "09:00".to_string(),
         }
     }
 }
@@ -70,6 +84,17 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
         auto_check_enabled: get_setting_raw(pool, "auto_check_enabled").await
             .map(|v| v == "true")
             .unwrap_or(true),
+        smtp_host: get_setting_raw(pool, "smtp_host").await.unwrap_or_default(),
+        smtp_port: get_setting_raw(pool, "smtp_port").await
+            .unwrap_or_else(|| "465".to_string()),
+        smtp_username: get_setting_raw(pool, "smtp_username").await.unwrap_or_default(),
+        smtp_password: get_setting_raw(pool, "smtp_password").await.unwrap_or_default(),
+        smtp_recipient: get_setting_raw(pool, "smtp_recipient").await.unwrap_or_default(),
+        email_report_enabled: get_setting_raw(pool, "email_report_enabled").await
+            .map(|v| v == "true")
+            .unwrap_or(false),
+        email_report_time: get_setting_raw(pool, "email_report_time").await
+            .unwrap_or_else(|| "09:00".to_string()),
     })
 }
 
@@ -82,6 +107,13 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
     save_setting_raw(pool, "check_frequency", &settings.check_frequency).await?;
     save_setting_raw(pool, "notifications_enabled", &settings.notifications_enabled.to_string()).await?;
     save_setting_raw(pool, "auto_check_enabled", &settings.auto_check_enabled.to_string()).await?;
+    save_setting_raw(pool, "smtp_host", &settings.smtp_host).await?;
+    save_setting_raw(pool, "smtp_port", &settings.smtp_port).await?;
+    save_setting_raw(pool, "smtp_username", &settings.smtp_username).await?;
+    save_setting_raw(pool, "smtp_password", &settings.smtp_password).await?;
+    save_setting_raw(pool, "smtp_recipient", &settings.smtp_recipient).await?;
+    save_setting_raw(pool, "email_report_enabled", &settings.email_report_enabled.to_string()).await?;
+    save_setting_raw(pool, "email_report_time", &settings.email_report_time).await?;
     Ok(())
 }
 

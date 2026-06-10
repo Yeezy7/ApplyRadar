@@ -48,13 +48,6 @@ struct OpenAIMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OpenAIRequest {
-    model: String,
-    messages: Vec<OpenAIMessage>,
-    response_format: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 struct OpenAIResponse {
     choices: Vec<OpenAIChoice>,
     usage: Option<OpenAIUsage>,
@@ -102,119 +95,7 @@ pub async fn parse_status(
     state: State<'_, AppState>,
     input: AIParseInput,
 ) -> Result<AIParseOutput, String> {
-    let (api_key, base_url, model_name) = get_ai_settings(&state.db).await;
-    if api_key.is_empty() {
-        return Err("AI API key not configured. Please set it in Settings.".to_string());
-    }
-
-    // Safe UTF-8 truncation that respects char boundaries
-    let truncated_text = if input.visible_text.len() > 8000 {
-        let mut end = 8000;
-        while !input.visible_text.is_char_boundary(end) {
-            end -= 1;
-        }
-        &input.visible_text[..end]
-    } else {
-        &input.visible_text
-    };
-
-    let user_prompt = format!(
-        "URL: {}\nPage Title: {}\nPrevious Status: {}\nKnown Company: {}\nKnown Job Title: {}\n\nVisible Text:\n{}",
-        input.url,
-        input.page_title,
-        input.previous_status.as_deref().unwrap_or("unknown"),
-        input.known_company.as_deref().unwrap_or("unknown"),
-        input.known_job_title.as_deref().unwrap_or("unknown"),
-        truncated_text
-    );
-
-    let request = OpenAIRequest {
-        model: model_name,
-        messages: vec![
-            OpenAIMessage {
-                role: "system".to_string(),
-                content: SYSTEM_PROMPT.to_string(),
-            },
-            OpenAIMessage {
-                role: "user".to_string(),
-                content: user_prompt,
-            },
-        ],
-        response_format: Some(serde_json::json!({ "type": "json_object" })),
-    };
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .connect_timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-    let base_url_trimmed = base_url.trim_end_matches('/');
-    let response = client
-        .post(format!("{}/chat/completions", base_url_trimmed))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("AI request failed: {}", e))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("AI API error ({}): {}", status, body));
-    }
-
-    let openai_response: OpenAIResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse AI response: {}", e))?;
-
-    // Extract token usage
-    let usage = openai_response.usage.as_ref();
-
-    let content = openai_response
-        .choices
-        .first()
-        .ok_or_else(|| "No response from AI".to_string())?
-        .message
-        .content
-        .clone();
-
-    let mut output: AIParseOutput = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse AI output as JSON: {}. Raw: {}", e, content.chars().take(500).collect::<String>()))?;
-
-    // Set token usage
-    if let Some(u) = usage {
-        output.prompt_tokens = u.prompt_tokens.unwrap_or(0);
-        output.completion_tokens = u.completion_tokens.unwrap_or(0);
-        output.total_tokens = u.total_tokens.unwrap_or(0);
-    }
-
-    // Clamp confidence to valid range
-    output.confidence = output.confidence.clamp(0.0, 1.0);
-
-    // Validate normalized_status against allowed values
-    let valid_statuses = [
-        "to_apply", "applied", "received", "under_review", "assessment",
-        "interview", "final_interview", "offer", "rejected", "withdrawn", "unknown",
-    ];
-    if let Some(ref status) = output.normalized_status {
-        if !valid_statuses.contains(&status.as_str()) {
-            output.normalized_status = Some("unknown".to_string());
-        }
-    }
-
-    // Validate login_state against allowed values
-    let valid_login_states = [
-        "valid", "expired", "captcha_required", "mfa_required", "blocked", "unknown",
-    ];
-    if let Some(ref state) = output.login_state {
-        if !valid_login_states.contains(&state.as_str()) {
-            output.login_state = Some("unknown".to_string());
-        }
-    }
-
-    Ok(output)
+    parse_status_inner(&state.db, input).await
 }
 
 // Inner helper: same logic as parse_status but takes pool directly

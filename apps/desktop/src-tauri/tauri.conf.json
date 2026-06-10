@@ -14,10 +14,10 @@
     "windows": [
       {
         "title": "ApplyRadar · 投递雷达",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 1024,
-        "minHeight": 600,
+        "width": 1120,
+        "height": 720,
+        "minWidth": 920,
+        "minHeight": 560,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
         "transparent": true,

@@ -113,10 +113,9 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="animate-pulse space-y-6">
-          <div className="h-8 w-32 bg-gray-200 rounded" />
-          <div className="grid grid-cols-4 gap-5">
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-28 bg-gray-200 rounded-xl" />
             ))}
@@ -154,13 +153,7 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="p-5">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">仪表盘</h1>
-        <p className="text-sm text-gray-500 mt-1">求职状态概览</p>
-      </div>
-
+    <div className="px-4 pb-4 pt-2">
       {error && (
         <div className="mb-5 flex items-center justify-between rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
@@ -174,7 +167,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-4 gap-5 mb-8">
+      <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
         {statCards.map((card) => {
           const Icon = card.icon;
           return (
@@ -196,9 +189,9 @@ export default function DashboardPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         {/* Status Breakdown */}
-        <div className="col-span-1 bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 xl:col-span-1">
           <div className="flex items-center gap-2 mb-5">
             <BarChart3 className="w-4 h-4 text-gray-400" />
             <h2 className="text-base font-semibold text-gray-900">状态分布</h2>
@@ -231,7 +224,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Applications */}
-        <div className="col-span-2 bg-white rounded-2xl border border-gray-100 p-6">
+        <div className="bg-white rounded-2xl border border-gray-100 p-6 xl:col-span-2">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-gray-900">最近更新</h2>
             <span className="text-xs text-gray-400">{recentApps.length} 条记录</span>

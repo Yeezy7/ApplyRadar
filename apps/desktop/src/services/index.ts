@@ -5,3 +5,6 @@ export * as reminderService from "./reminderService";
 export * as notificationService from "./notificationService";
 export * as sidecarService from "./sidecarService";
 export * as aiService from "./aiService";
+export * as emailService from "./emailService";
+export * as pushLogService from "./pushLogService";
+export { confirmDelete } from "./dialogService";

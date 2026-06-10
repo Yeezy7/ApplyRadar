@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Eye, EyeOff, RotateCcw, TestTube2, Check, AlertCircle, FolderOpen, Download, Upload } from "lucide-react";
 import type { Application, ApplicationEvent, Reminder, TrackingTarget } from "@applyradar/shared";
 import { getSettings, saveSettings, loadSettings, DEFAULT_SETTINGS, type AppSettings } from "../stores/settings";
-import { aiService, sidecarService, applicationService, trackerService, reminderService, eventService } from "../services";
+import { aiService, sidecarService, applicationService, trackerService, reminderService, eventService, emailService } from "../services";
 import { requestPermission, isPermissionGranted } from "@tauri-apps/plugin-notification";
 
 interface BackupData {
@@ -113,8 +113,13 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(getSettings);
   const [saved, setSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [sendingReport, setSendingReport] = useState(false);
+  const [reportResult, setReportResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [appDataDir, setAppDataDir] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -166,6 +171,36 @@ export default function SettingsPage() {
       setTestResult({ ok: false, msg: String(e) });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setTestingEmail(true);
+    setEmailTestResult(null);
+    try {
+      await saveSettings(settings);
+      setDirty(false);
+      const msg = await emailService.testEmailConfig();
+      setEmailTestResult({ ok: true, msg });
+    } catch (e) {
+      setEmailTestResult({ ok: false, msg: String(e) });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
+  const handleSendReport = async () => {
+    setSendingReport(true);
+    setReportResult(null);
+    try {
+      await saveSettings(settings);
+      setDirty(false);
+      const msg = await emailService.sendDailyReportWithCheck();
+      setReportResult({ ok: true, msg });
+    } catch (e) {
+      setReportResult({ ok: false, msg: String(e) });
+    } finally {
+      setSendingReport(false);
     }
   };
 
@@ -445,13 +480,9 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="max-w-3xl px-4 pb-6 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">设置</h1>
-          <p className="text-sm text-gray-500 mt-1">配置 AI、自动化和通知</p>
-        </div>
+      <div className="mb-4 flex items-center justify-end">
         <button
           onClick={handleReset}
           className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
@@ -607,6 +638,146 @@ export default function SettingsPage() {
               />
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Email Report */}
+      <section className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
+        <h2 className="text-base font-semibold text-gray-900 mb-5">邮件日报</h2>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <div className="text-sm font-medium text-gray-900">启用邮件日报</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                每天定时发送求职状态报告到邮箱
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.emailReportEnabled}
+              onClick={() => handleChange({ emailReportEnabled: !settings.emailReportEnabled })}
+              className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-stone-500/20 ${
+                settings.emailReportEnabled ? "bg-stone-900" : "bg-gray-300"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  settings.emailReportEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {settings.emailReportEnabled && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">SMTP 服务器</label>
+                  <input
+                    type="text"
+                    value={settings.smtpHost}
+                    onChange={(e) => handleChange({ smtpHost: e.target.value })}
+                    placeholder="smtp.qq.com"
+                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">端口</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="65535"
+                    value={settings.smtpPort}
+                    onChange={(e) => handleChange({ smtpPort: e.target.value })}
+                    placeholder="465"
+                    className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                  />
+                  <p className="text-[11px] text-gray-400 mt-1.5">465 (SSL) 或 587 (STARTTLS)</p>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">用户名</label>
+                <input
+                  type="text"
+                  value={settings.smtpUsername}
+                  onChange={(e) => handleChange({ smtpUsername: e.target.value })}
+                  placeholder="your-email@qq.com"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                />
+                <p className="text-[11px] text-gray-400 mt-1.5">QQ邮箱填完整邮箱，163邮箱填用户名（不含@163.com）</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">密码/授权码</label>
+                <div className="relative">
+                  <input
+                    type={showSmtpPassword ? "text" : "password"}
+                    value={settings.smtpPassword}
+                    onChange={(e) => handleChange({ smtpPassword: e.target.value })}
+                    placeholder="SMTP 授权码"
+                    className="w-full px-3.5 py-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showSmtpPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">QQ邮箱在「设置→账户→POP3/SMTP服务」开启后获取授权码</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">收件人邮箱</label>
+                <input
+                  type="email"
+                  value={settings.smtpRecipient}
+                  onChange={(e) => handleChange({ smtpRecipient: e.target.value })}
+                  placeholder="your-email@qq.com"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">发送时间</label>
+                <input
+                  type="time"
+                  value={settings.emailReportTime}
+                  onChange={(e) => handleChange({ emailReportTime: e.target.value })}
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 focus:bg-white transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleTestEmail}
+                  disabled={testingEmail || !settings.smtpHost || !settings.smtpUsername || !settings.smtpRecipient}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 bg-stone-50 hover:bg-stone-100 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  <TestTube2 className="w-4 h-4" />
+                  {testingEmail ? "发送中..." : "发送测试邮件"}
+                </button>
+                <button
+                  onClick={handleSendReport}
+                  disabled={sendingReport || !settings.smtpHost || !settings.smtpUsername || !settings.smtpRecipient}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-stone-900 hover:bg-stone-800 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  {sendingReport ? "检查并发送中..." : "检查并发送报告"}
+                </button>
+              </div>
+              {emailTestResult && (
+                <div className={`flex items-center gap-1.5 text-sm ${emailTestResult.ok ? "text-green-600" : "text-red-500"}`}>
+                  {emailTestResult.ok ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {emailTestResult.msg}
+                </div>
+              )}
+              {reportResult && (
+                <div className={`flex items-center gap-1.5 text-sm ${reportResult.ok ? "text-green-600" : "text-red-500"}`}>
+                  {reportResult.ok ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {reportResult.msg}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </section>
 

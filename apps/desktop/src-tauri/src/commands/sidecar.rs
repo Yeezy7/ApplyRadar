@@ -299,20 +299,41 @@ pub async fn run_sidecar_open_login(
             .map_err(|e| format!("Failed to close stdin: {}", e))?;
     }
 
+    // Drain stderr in background to prevent pipe buffer blocking
+    let stderr = child.stderr.take();
+    tokio::spawn(async move {
+        if let Some(stderr) = stderr {
+            let mut reader = BufReader::new(stderr);
+            let mut line = String::new();
+            while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+                eprint!("{}", line);
+                line.clear();
+            }
+        }
+    });
+
     let stdout = child
         .stdout
         .take()
         .ok_or_else(|| "Failed to get stdout".to_string())?;
 
+    // No timeout for open_login - user needs time to log in manually.
+    // The sidecar stays alive until the user closes the browser.
     let mut reader = BufReader::new(stdout);
     let mut line = String::new();
     reader
         .read_line(&mut line)
         .await
-        .map_err(|e| format!("Failed to read stdout: {}", e))?;
+        .map_err(|e| {
+            let _ = child.start_kill();
+            format!("Failed to read stdout: {}", e)
+        })?;
 
     let response: SidecarCheckResponse = serde_json::from_str(&line.trim())
         .map_err(|e| format!("Failed to parse sidecar response: {}. Raw: {}", e, line))?;
+
+    // Detach the child - sidecar will exit on its own when stdin closes
+    drop(child);
 
     Ok(response)
 }

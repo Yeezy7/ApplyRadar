@@ -1,11 +1,21 @@
 mod db;
 mod commands;
 
-use commands::{application, tracker, event, reminder, ai, sidecar, settings};
+use chrono::Timelike;
+use commands::{application, tracker, event, reminder, ai, sidecar, settings, email, push_log};
 use sqlx::SqlitePool;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
+
+fn parse_hhmm(s: &str) -> Option<u32> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 2 { return None; }
+    let h: u32 = parts[0].parse().ok()?;
+    let m: u32 = parts[1].parse().ok()?;
+    if h > 23 || m > 59 { return None; }
+    Some(h * 60 + m)
+}
 
 // Calculate check interval based on target frequencies
 async fn calculate_check_interval(db: &SqlitePool) -> u64 {
@@ -159,6 +169,75 @@ pub fn run() {
                 }
             });
 
+            // Start daily email report timer
+            let db = pool.clone();
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last_sent_date: String = String::new();
+
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+
+                    let enabled = settings::get_setting_raw(&db, "email_report_enabled")
+                        .await
+                        .map(|v| v == "true")
+                        .unwrap_or(false);
+                    if !enabled {
+                        continue;
+                    }
+
+                    let report_time = settings::get_setting_raw(&db, "email_report_time")
+                        .await
+                        .unwrap_or_else(|| "09:00".to_string());
+
+                    let local_now = chrono::Local::now();
+                    let today = local_now.format("%Y-%m-%d").to_string();
+
+                    // Check if already sent today (in-memory + DB)
+                    if last_sent_date == today {
+                        continue;
+                    }
+                    let db_last_sent = settings::get_setting_raw(&db, "email_report_last_sent")
+                        .await
+                        .unwrap_or_default();
+                    if db_last_sent.starts_with(&today) {
+                        last_sent_date = today;
+                        continue;
+                    }
+
+                    // Parse time and compare with a 2-minute window
+                    let local_time = local_now.time();
+                    let current_minutes = local_time.hour() * 60 + local_time.minute();
+                    let report_minutes = parse_hhmm(&report_time).unwrap_or(9 * 60);
+                    if current_minutes.abs_diff(report_minutes) > 1 {
+                        continue;
+                    }
+
+                    let config = email::read_smtp_config(&db).await;
+                    if !email::is_smtp_configured(&config) {
+                        continue;
+                    }
+
+                    println!("[email_report] Sending daily report...");
+                    match email::send_daily_report_with_config(&db, &config).await {
+                        Ok(()) => {
+                            println!("[email_report] Daily report sent");
+                            last_sent_date = today;
+                        }
+                        Err(e) => {
+                            println!("[email_report] Failed to send: {}", e);
+                            let _ = app_handle.emit("auto-check:notify", serde_json::json!({
+                                "type": "check_failed",
+                                "title": "邮件报告发送失败",
+                                "body": e,
+                                "targetId": null,
+                                "applicationId": null
+                            }));
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -180,6 +259,7 @@ pub fn run() {
             reminder::create_reminder,
             reminder::list_reminders,
             reminder::mark_reminder_done,
+            reminder::update_reminder,
             reminder::delete_reminder,
             ai::parse_status,
             ai::test_ai_connection,
@@ -194,8 +274,14 @@ pub fn run() {
             settings::is_ai_configured,
             tracker::run_auto_check,
             tracker::get_auto_check_status,
+            tracker::reset_auto_check,
             tracker::run_tracking_target_check,
             tracker::run_tracking_targets_check,
+            email::test_email_config,
+            email::send_daily_report,
+            email::send_daily_report_with_check,
+            push_log::list_push_logs,
+            push_log::clear_push_logs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

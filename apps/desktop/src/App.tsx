@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { loadSettings } from "./stores/settings";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -11,6 +11,7 @@ import {
   Columns3,
   Laptop,
   ChevronsLeft,
+  Send,
 } from "lucide-react";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import ApplicationDetailPage from "./pages/ApplicationDetailPage";
@@ -19,11 +20,31 @@ import RemindersPage from "./pages/RemindersPage";
 import SettingsPage from "./pages/SettingsPage";
 import DashboardPage from "./pages/DashboardPage";
 import KanbanPage from "./pages/KanbanPage";
+import PushPage from "./pages/PushPage";
 import { applicationService, trackerService, reminderService, notificationService } from "./services";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 const appWindow = getCurrentWindow();
+const MIN_SIDEBAR_WIDTH = 72;
+const DEFAULT_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 300;
+const COMPACT_SIDEBAR_THRESHOLD = 128;
 
-type Page = "dashboard" | "applications" | "kanban" | "tracker" | "reminders" | "settings";
+const clampSidebarWidth = (width: number) =>
+  Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width));
+
+const loadSidebarWidth = (): number => {
+  try {
+    const saved = localStorage.getItem("sidebarWidth");
+    if (saved) {
+      const w = parseInt(saved, 10);
+      if (Number.isFinite(w)) return clampSidebarWidth(w);
+    }
+  } catch {}
+  return DEFAULT_SIDEBAR_WIDTH;
+};
+
+type Page = "dashboard" | "applications" | "kanban" | "tracker" | "reminders" | "push" | "settings";
 
 interface NavCounts {
   applications: number;
@@ -57,18 +78,26 @@ const navItems: {
   { key: "kanban", label: "看板", icon: Columns3 },
   { key: "tracker", label: "状态监控", icon: Activity, countKey: "tracker" },
   { key: "reminders", label: "提醒", icon: Bell, countKey: "reminders" },
+  { key: "push", label: "推送", icon: Send },
   { key: "settings", label: "设置", icon: Settings },
 ];
 
 export default function App() {
   const [page, setPage] = useState<Page>("dashboard");
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
-  const [compact, setCompact] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [counts, setCounts] = useState<NavCounts>({
     applications: 0,
     tracker: 0,
     reminders: 0,
   });
+  const compact = sidebarWidth < COMPACT_SIDEBAR_THRESHOLD;
+
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
 
   useEffect(() => {
     loadSettings();
@@ -125,6 +154,35 @@ export default function App() {
     loadCounts();
   }, [page]);
 
+  useEffect(() => {
+    if (!isResizingSidebar) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const handleMouseMove = (event: MouseEvent) => {
+      setSidebarWidth(clampSidebarWidth(event.clientX));
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      try { localStorage.setItem("sidebarWidth", String(sidebarWidthRef.current)); } catch {}
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizingSidebar]);
+
   const handleNavigate = (p: Page) => {
     setPage(p);
     setSelectedAppId(null);
@@ -142,13 +200,31 @@ export default function App() {
 
       {/* Sidebar */}
       <aside
-        className="flex shrink-0 flex-col border-r border-stone-200 bg-[#F3F0E8] transition-all duration-200"
-        style={{ width: compact ? 72 : 220 }}
+        className={`relative flex shrink-0 flex-col bg-[#F3F0E8] ${
+          isResizingSidebar ? "" : "transition-all duration-200"
+        }`}
+        style={{ width: sidebarWidth }}
       >
+        <div className="pointer-events-none absolute bottom-0 right-0 top-[36px] w-px bg-stone-200" />
+        <div
+          className="absolute bottom-0 right-[-3px] top-[36px] z-30 w-1.5 cursor-col-resize rounded-full hover:bg-stone-300/70"
+          onMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setIsResizingSidebar(true);
+          }}
+          aria-label="拖动调整侧边栏宽度"
+          role="separator"
+        />
+
         {/* Traffic light area */}
         <div className="flex h-[36px] shrink-0 items-start pl-[70px] pt-[14px]">
           <button
-            onClick={() => setCompact(!compact)}
+            onClick={() => {
+              const w = compact ? DEFAULT_SIDEBAR_WIDTH : MIN_SIDEBAR_WIDTH;
+              setSidebarWidth(w);
+              try { localStorage.setItem("sidebarWidth", String(w)); } catch {}
+            }}
             className="relative z-20 flex h-[18px] w-[18px] items-center justify-center rounded-md text-stone-400 hover:bg-stone-300/60 hover:text-stone-600"
             aria-label={compact ? "展开侧边栏" : "收起侧边栏"}
           >
@@ -167,11 +243,11 @@ export default function App() {
               <button
                 key={item.key}
                 onClick={() => handleNavigate(item.key)}
-                className={`flex h-9 w-full items-center gap-2 rounded-lg px-2 text-[13px] transition ${
+                className={`flex h-9 w-full items-center gap-2 rounded-lg text-[13px] transition ${
                   active
                     ? "bg-white text-stone-950 shadow-sm ring-1 ring-stone-200"
                     : "text-stone-600 hover:bg-stone-200/70 hover:text-stone-950"
-                }`}
+                } ${compact ? "justify-center px-0" : "px-2"}`}
                 title={compact ? item.label : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -215,25 +291,28 @@ export default function App() {
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="h-[36px] shrink-0 bg-[#F3F0E8]" />
         <div className="min-h-0 flex-1 overflow-auto bg-[#FAF9F5]">
-          {selectedAppId ? (
-            <ApplicationDetailPage
-              applicationId={selectedAppId}
-              onBack={() => setSelectedAppId(null)}
-            />
-          ) : (
-            <>
-              {page === "dashboard" && <DashboardPage />}
-              {page === "applications" && (
-                <ApplicationsPage onSelectApp={(id) => setSelectedAppId(id)} />
-              )}
-              {page === "kanban" && (
-                <KanbanPage onSelectApp={(id) => setSelectedAppId(id)} />
-              )}
-              {page === "tracker" && <TrackerPage />}
-              {page === "reminders" && <RemindersPage />}
-              {page === "settings" && <SettingsPage />}
-            </>
-          )}
+          <ErrorBoundary key={selectedAppId || page}>
+            {selectedAppId ? (
+              <ApplicationDetailPage
+                applicationId={selectedAppId}
+                onBack={() => setSelectedAppId(null)}
+              />
+            ) : (
+              <>
+                {page === "dashboard" && <DashboardPage />}
+                {page === "applications" && (
+                  <ApplicationsPage onSelectApp={(id) => setSelectedAppId(id)} />
+                )}
+                {page === "kanban" && (
+                  <KanbanPage onSelectApp={(id) => setSelectedAppId(id)} />
+                )}
+                {page === "tracker" && <TrackerPage />}
+                {page === "reminders" && <RemindersPage />}
+                {page === "push" && <PushPage />}
+                {page === "settings" && <SettingsPage />}
+              </>
+            )}
+          </ErrorBoundary>
         </div>
       </main>
     </div>

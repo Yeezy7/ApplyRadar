@@ -7,6 +7,13 @@ export interface AppSettings {
   checkFrequency: string;
   notificationsEnabled: boolean;
   autoCheckEnabled: boolean;
+  smtpHost: string;
+  smtpPort: string;
+  smtpUsername: string;
+  smtpPassword: string;
+  smtpRecipient: string;
+  emailReportEnabled: boolean;
+  emailReportTime: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -16,6 +23,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   checkFrequency: "daily",
   notificationsEnabled: true,
   autoCheckEnabled: true,
+  smtpHost: "",
+  smtpPort: "465",
+  smtpUsername: "",
+  smtpPassword: "",
+  smtpRecipient: "",
+  emailReportEnabled: false,
+  emailReportTime: "09:00",
 };
 
 // In-memory cache for synchronous access
@@ -33,6 +47,13 @@ export async function loadSettings(): Promise<AppSettings> {
       checkFrequency: result.checkFrequency || DEFAULT_SETTINGS.checkFrequency,
       notificationsEnabled: result.notificationsEnabled ?? true,
       autoCheckEnabled: result.autoCheckEnabled ?? true,
+      smtpHost: result.smtpHost || "",
+      smtpPort: result.smtpPort || "465",
+      smtpUsername: result.smtpUsername || "",
+      smtpPassword: result.smtpPassword || "",
+      smtpRecipient: result.smtpRecipient || "",
+      emailReportEnabled: result.emailReportEnabled ?? false,
+      emailReportTime: result.emailReportTime || "09:00",
     };
     loaded = true;
     return cachedSettings;

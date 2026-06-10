@@ -3,6 +3,7 @@ import { Search, GripVertical, ExternalLink, MapPin, Plus } from "lucide-react";
 import type { Application, ApplicationStatus } from "@applyradar/shared";
 import { applicationService, eventService } from "../services";
 import ApplicationForm from "../components/ApplicationForm";
+import { getActiveWaitingDays } from "../utils/applications";
 
 // Simplified Kanban columns - group related statuses
 interface KanbanColumn {
@@ -66,8 +67,8 @@ export default function KanbanPage({ onSelectApp }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
 
-  const loadApplications = useCallback(async (showLoading = false) => {
-    if (showLoading) setLoading(true);
+  const loadApplications = useCallback(async () => {
+    setLoading(true);
     setError(null);
     try {
       const data = await applicationService.listApplications();
@@ -82,12 +83,8 @@ export default function KanbanPage({ onSelectApp }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!initialLoaded) {
-      loadApplications(true);
-    } else {
-      loadApplications(false);
-    }
-  }, [loadApplications, initialLoaded]);
+    loadApplications();
+  }, [loadApplications]);
 
   const filteredApps = useMemo(() => {
     if (!search.trim()) return applications;
@@ -179,19 +176,11 @@ export default function KanbanPage({ onSelectApp }: Props) {
     }
   };
 
-  const getDaysWaiting = (app: Application) => {
-    if (!app.applied_at) return null;
-    return Math.floor(
-      (Date.now() - new Date(app.applied_at).getTime()) / (1000 * 60 * 60 * 24)
-    );
-  };
-
   // Only show loading skeleton on initial load
   if (loading && !initialLoaded) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="animate-pulse space-y-6">
-          <div className="h-8 w-32 bg-gray-200 rounded" />
           <div className="flex gap-4 overflow-hidden">
             {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="flex-shrink-0 w-64 h-96 bg-gray-200 rounded-2xl" />
@@ -204,11 +193,11 @@ export default function KanbanPage({ onSelectApp }: Props) {
 
   if (error) {
     return (
-      <div className="p-5">
+      <div className="px-4 pb-4 pt-2">
         <div className="text-center py-20">
           <p className="text-sm text-red-500 mb-3">{error}</p>
           <button
-            onClick={() => loadApplications(true)}
+            onClick={() => loadApplications()}
             className="px-4 py-2 text-sm text-stone-700 hover:bg-stone-100 rounded-lg transition-colors"
           >
             重试
@@ -219,14 +208,10 @@ export default function KanbanPage({ onSelectApp }: Props) {
   }
 
   return (
-    <div className="p-5">
+    <div className="px-4 pb-4 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">看板</h1>
-          <p className="text-sm text-gray-500 mt-1">拖拽卡片快速修改状态</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="mb-4 flex items-center justify-end">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <div className="relative">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -234,7 +219,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
               placeholder="搜索公司、岗位、地点..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all w-64"
+              className="w-56 pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all sm:w-64"
             />
           </div>
           <button
@@ -267,7 +252,8 @@ export default function KanbanPage({ onSelectApp }: Props) {
           <p className="text-xs text-gray-400 mt-1">点击"新建"添加求职记录</p>
         </div>
       ) : (
-        <div className="grid grid-cols-5 gap-4 pb-4">
+        <div className="overflow-x-auto pb-2">
+          <div className="grid min-w-[980px] grid-cols-5 gap-4 pb-4">
           {KANBAN_COLUMNS.map((col) => {
             const apps = getColumnApps(col);
             const isDragOver = dragOverColumnId === col.id;
@@ -293,14 +279,14 @@ export default function KanbanPage({ onSelectApp }: Props) {
                 </div>
 
                 {/* Cards */}
-                <div className="flex-1 px-2 pb-2 space-y-2 min-h-[200px] overflow-y-auto max-h-[calc(100vh-240px)]">
+                <div className="flex-1 px-2 pb-2 space-y-2 min-h-[200px] overflow-y-auto max-h-[calc(100vh-190px)]">
                   {apps.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-xs text-gray-300">拖拽到此列</p>
                     </div>
                   ) : (
                     apps.map((app) => {
-                      const days = getDaysWaiting(app);
+                      const days = getActiveWaitingDays(app);
                       const isDragging = draggedId === app.id;
 
                       return (
@@ -389,6 +375,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
               </div>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -398,7 +385,7 @@ export default function KanbanPage({ onSelectApp }: Props) {
           onSaved={setNotice}
           onClose={() => {
             setShowForm(false);
-            loadApplications(false);
+            loadApplications();
           }}
         />
       )}

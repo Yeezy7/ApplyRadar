@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
-import { Check, Plus, Trash2, Search, Bell, X } from "lucide-react";
+import { Check, Plus, Trash2, Search, Bell, X, Pencil } from "lucide-react";
 import type { Reminder, ReminderType } from "@applyradar/shared";
 import { REMINDER_TYPE_LABELS } from "@applyradar/shared";
-import { reminderService, applicationService } from "../services";
-import { confirmDelete } from "../services/dialogService";
+import { reminderService, applicationService, confirmDelete } from "../services";
 
 const REMINDER_TYPE_COLORS: Record<string, string> = {
   interview: "bg-stone-100 text-stone-700",
@@ -23,6 +22,7 @@ export default function RemindersPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formContent, setFormContent] = useState("");
   const [formType, setFormType] = useState<string>("custom");
@@ -36,21 +36,17 @@ export default function RemindersPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await reminderService.listReminders(undefined, includeDone);
+      const [data, apps] = await Promise.all([
+        reminderService.listReminders(undefined, includeDone),
+        applicationService.listApplications(),
+      ]);
       setReminders(data);
 
-      // Load application names for reminders that have application_id
-      const appIds = [...new Set(data.filter((r) => r.application_id).map((r) => r.application_id!))];
-      if (appIds.length > 0) {
-        const names = new Map<string, string>();
-        for (const id of appIds) {
-          try {
-            const app = await applicationService.getApplication(id);
-            names.set(id, `${app.company_name} - ${app.job_title}`);
-          } catch {}
-        }
-        setAppNames(names);
+      const names = new Map<string, string>();
+      for (const app of apps) {
+        names.set(app.id, `${app.company_name} - ${app.job_title}`);
       }
+      setAppNames(names);
     } catch (e) {
       console.error("Failed to load reminders:", e);
       setError("加载失败，请重试");
@@ -95,40 +91,74 @@ export default function RemindersPage() {
     }
   };
 
+  const resetForm = () => {
+    setEditingReminder(null);
+    setFormTitle("");
+    setFormContent("");
+    setFormType("custom");
+    setFormRemindAt("");
+    setFormAppId("");
+  };
+
   const handleCreate = async () => {
     if (!formTitle.trim() || !formRemindAt) return;
     setSubmitting(true);
     try {
-      await reminderService.createReminder({
-        title: formTitle.trim(),
-        content: formContent.trim() || undefined,
-        reminder_type: formType,
-        remind_at: new Date(formRemindAt).toISOString(),
-        application_id: formAppId || undefined,
-      });
+      if (editingReminder) {
+        await reminderService.updateReminder(editingReminder.id, {
+          title: formTitle.trim(),
+          content: formContent.trim() || null,
+          reminder_type: formType,
+          remind_at: new Date(formRemindAt).toISOString(),
+          application_id: formAppId || null,
+        });
+        setNotice({ success: true, message: "提醒已更新" });
+      } else {
+        await reminderService.createReminder({
+          title: formTitle.trim(),
+          content: formContent.trim() || undefined,
+          reminder_type: formType,
+          remind_at: new Date(formRemindAt).toISOString(),
+          application_id: formAppId || undefined,
+        });
+        setNotice({ success: true, message: "提醒已创建" });
+      }
       setShowForm(false);
-      setFormTitle("");
-      setFormContent("");
-      setFormType("custom");
-      setFormRemindAt("");
-      setFormAppId("");
-      setNotice({ success: true, message: "提醒已创建" });
+      resetForm();
       await loadReminders();
     } catch (e) {
-      console.error("Failed to create reminder:", e);
-      setNotice({ success: false, message: `创建提醒失败: ${e instanceof Error ? e.message : String(e)}` });
+      console.error("Failed to save reminder:", e);
+      setNotice({ success: false, message: `保存提醒失败: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setSubmitting(false);
     }
   };
 
-  const openCreateForm = async () => {
-    setShowForm(true);
-    // Load applications for the dropdown
+  const loadApplicationsForForm = async () => {
     try {
       const apps = await applicationService.listApplications();
       setApplications(apps.map((a) => ({ id: a.id, company_name: a.company_name, job_title: a.job_title })));
     } catch {}
+  };
+
+  const openCreateForm = async () => {
+    resetForm();
+    setShowForm(true);
+    await loadApplicationsForForm();
+  };
+
+  const openEditForm = async (r: Reminder) => {
+    setEditingReminder(r);
+    setFormTitle(r.title);
+    setFormContent(r.content || "");
+    setFormType(r.reminder_type || "custom");
+    // Convert ISO string to datetime-local format
+    const d = new Date(r.remind_at);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    setFormRemindAt(local.toISOString().slice(0, 16));
+    setFormAppId(r.application_id || "");
+    setShowForm(true);
+    await loadApplicationsForForm();
   };
 
   const isOverdue = (r: Reminder) => !r.is_done && new Date(r.remind_at) < new Date();
@@ -147,11 +177,10 @@ export default function RemindersPage() {
   });
 
   return (
-    <div className="p-4">
+    <div className="px-4 pb-4 pt-2">
       {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-bold text-gray-900">提醒</h1>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -159,7 +188,7 @@ export default function RemindersPage() {
               placeholder="搜索提醒内容..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-64 pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all"
+              className="w-56 pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all sm:w-64"
             />
           </div>
           <select
@@ -173,14 +202,14 @@ export default function RemindersPage() {
             ))}
           </select>
           <label className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includeDone}
-            onChange={(e) => setIncludeDone(e.target.checked)}
-            className="rounded border-gray-300 text-stone-700 focus:ring-stone-500"
-          />
-          <span className="text-gray-600">显示已完成</span>
-        </label>
+            <input
+              type="checkbox"
+              checked={includeDone}
+              onChange={(e) => setIncludeDone(e.target.checked)}
+              className="rounded border-gray-300 text-stone-700 focus:ring-stone-500"
+            />
+            <span className="whitespace-nowrap text-gray-600">显示已完成</span>
+          </label>
         </div>
         <button
           onClick={openCreateForm}
@@ -241,7 +270,7 @@ export default function RemindersPage() {
               return (
                 <div
                   key={r.id}
-                  className={`flex items-center gap-4 px-5 py-4 transition-colors ${
+                  className={`group flex items-center gap-4 px-5 py-4 transition-colors ${
                     r.is_done ? "opacity-50" : overdue ? "bg-red-50/50" : "hover:bg-gray-50"
                   }`}
                 >
@@ -256,21 +285,21 @@ export default function RemindersPage() {
                     {r.is_done ? <Check className="w-3 h-3" /> : null}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <p
-                        className={`text-sm font-medium ${
+                        className={`truncate text-sm font-medium ${
                           r.is_done ? "line-through text-gray-400" : "text-gray-900"
                         }`}
                       >
                         {r.title}
                       </p>
                       {r.reminder_type && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${typeColor}`}>
+                        <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded ${typeColor}`}>
                           {REMINDER_TYPE_LABELS[r.reminder_type as ReminderType] || r.reminder_type}
                         </span>
                       )}
                       {r.created_by === "ai" && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-stone-50 text-stone-500 rounded">
+                        <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-stone-50 text-stone-500 rounded">
                           AI
                         </span>
                       )}
@@ -303,6 +332,13 @@ export default function RemindersPage() {
                       </span>
                     )}
                     <button
+                      onClick={() => openEditForm(r)}
+                      className="p-1.5 text-gray-300 hover:text-stone-700 hover:bg-stone-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="编辑"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => handleDelete(r.id)}
                       className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                       title="删除"
@@ -322,9 +358,9 @@ export default function RemindersPage() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
-              <h2 className="text-lg font-bold text-gray-900">新建提醒</h2>
+              <h2 className="text-lg font-bold text-gray-900">{editingReminder ? "编辑提醒" : "新建提醒"}</h2>
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => { setShowForm(false); resetForm(); }}
                 className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -403,7 +439,7 @@ export default function RemindersPage() {
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
               <button
-                onClick={() => setShowForm(false)}
+                onClick={() => { setShowForm(false); resetForm(); }}
                 className="px-5 py-2.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl transition-colors"
               >
                 取消
@@ -413,7 +449,7 @@ export default function RemindersPage() {
                 disabled={!formTitle.trim() || !formRemindAt || submitting}
                 className="px-6 py-2.5 bg-stone-900 text-white rounded-xl text-sm font-medium hover:bg-stone-800 disabled:opacity-50 transition-all shadow-sm"
               >
-                {submitting ? "创建中..." : "创建"}
+                {submitting ? "保存中..." : editingReminder ? "保存" : "创建"}
               </button>
             </div>
           </div>
