@@ -5,6 +5,17 @@
   </view>
 
   <block wx:else>
+    <!-- Header with refresh -->
+    <view class="dashboard-header">
+      <view class="header-left">
+        <text class="header-greeting">{{greeting}}</text>
+        <text class="header-subtitle">求职进度一览</text>
+      </view>
+      <view class="refresh-btn" bind:tap="loadDashboard">
+        <text class="refresh-icon">↻</text>
+      </view>
+    </view>
+
     <!-- Stat Cards -->
     <view class="stat-grid">
       <stat-card

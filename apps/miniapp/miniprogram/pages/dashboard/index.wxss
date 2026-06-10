@@ -1,5 +1,73 @@
 @import '../../styles/theme.wxss';
 
+/* Dashboard Header */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32rpx;
+}
+
+.header-left {
+  flex: 1;
+}
+
+.header-greeting {
+  font-size: 36rpx;
+  font-weight: 700;
+  color: #1c1917;
+  display: block;
+}
+
+.header-subtitle {
+  font-size: 24rpx;
+  color: #78716c;
+  margin-top: 4rpx;
+  display: block;
+}
+
+.refresh-btn {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: #f5f5f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.refresh-btn:active {
+  background: #e7e5e4;
+}
+
+.refresh-icon {
+  font-size: 36rpx;
+  color: #57534e;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .header-greeting {
+    color: #fafaf9;
+  }
+
+  .header-subtitle {
+    color: #a8a29e;
+  }
+
+  .refresh-btn {
+    background: #292524;
+  }
+
+  .refresh-btn:active {
+    background: #44403c;
+  }
+
+  .refresh-icon {
+    color: #d6d3d1;
+  }
+}
+
 .skeleton-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

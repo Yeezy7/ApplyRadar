@@ -1,6 +1,9 @@
 // API 基础地址 - 备案通过后改为 https://www.yezzy7.xyz
 const BASE_URL = 'https://www.yezzy7.xyz';
 
+// 是否使用云开发（本地调试时设为 true）
+const USE_CLOUD = false;
+
 // Token 管理
 let cachedToken: string | null = null;
 
@@ -81,7 +84,6 @@ async function request<T = any>(
       success: (res) => {
         const result = res.data as any;
         if (result.code === 0) {
-          // Normalize id <-> _id for compatibility
           const normalized = normalizeResponse(result.data);
           resolve(normalized);
         } else if (result.code === 401) {
@@ -99,7 +101,7 @@ async function request<T = any>(
 }
 
 /**
- * Normalize response data - ensure _id exists for compatibility with cloud functions
+ * Normalize response data - ensure _id exists for compatibility
  */
 function normalizeResponse(data: any): any {
   if (!data) return data;
@@ -111,17 +113,14 @@ function normalizeResponse(data: any): any {
 
 function normalizeItem(item: any): any {
   if (!item || typeof item !== 'object') return item;
-  // If has id but no _id, copy id to _id
   if (item.id && !item._id) {
     return { ...item, _id: item.id };
   }
   return item;
 }
-}
 
 /**
  * 调用云函数（兼容旧接口，内部改为 REST API）
- * name 映射为 API 路径，action 映射为 HTTP 方法
  */
 export async function callCloud<T = any>(
   name: string,
@@ -133,7 +132,6 @@ export async function callCloud<T = any>(
     await wechatLogin();
   }
 
-  // 映射 action 到 HTTP 方法和路径
   const methodMap: Record<string, string> = {
     create: 'POST',
     list: 'GET',
@@ -151,7 +149,6 @@ export async function callCloud<T = any>(
   const method = methodMap[action] || 'POST';
   let path = `/api/${name}`;
 
-  // 特殊路径处理
   if (action === 'get' && data?.id) {
     path = `/api/${name}/${data.id}`;
   } else if (action === 'update' && data?.id) {
@@ -175,14 +172,11 @@ export async function callCloud<T = any>(
     path = `/api/${name}?limit=${data.limit}`;
   }
 
-  // GET 请求不传 body
   if (method === 'GET') {
     return request<T>(path, method);
   }
 
-  // POST/PUT/PATCH/DELETE 传 body
-  const body = action === 'create' ? data : data;
-  return request<T>(path, method, body);
+  return request<T>(path, method, data);
 }
 
 /**
