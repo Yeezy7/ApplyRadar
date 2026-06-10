@@ -1,13 +1,22 @@
+import { wechatLogin, isLoggedIn } from 'miniprogram/services/common';
+
 App({
-  onLaunch() {
-    if (!wx.cloud) {
-      console.error('请使用 2.2.3 或以上的基础库以使用云能力');
-      return;
-    }
-    wx.cloud.init({
-      traceUser: true,
-    });
+  globalData: {
+    isLoggedIn: false,
   },
 
-  globalData: {},
+  async onLaunch() {
+    // Auto login on launch
+    if (!isLoggedIn()) {
+      try {
+        await wechatLogin();
+        this.globalData.isLoggedIn = true;
+        console.log('Auto login success');
+      } catch (e) {
+        console.warn('Auto login failed:', e);
+      }
+    } else {
+      this.globalData.isLoggedIn = true;
+    }
+  },
 });

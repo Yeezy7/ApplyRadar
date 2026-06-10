@@ -1,8 +1,6 @@
 import type { Application } from '../utils/types';
 import { callCloud } from './common';
 
-const NAME = 'user';
-
 export interface UserSettings {
   apiKey: string;
   apiBaseUrl: string;
@@ -24,14 +22,14 @@ export interface DashboardStats {
 
 export const userService = {
   async getSettings(): Promise<UserSettings> {
-    return callCloud<UserSettings>(NAME, 'getSettings');
+    return callCloud<UserSettings>('settings', 'getSettings');
   },
 
   async saveSettings(settings: Partial<UserSettings>): Promise<void> {
-    await callCloud(NAME, 'saveSettings', settings);
+    await callCloud('settings', 'saveSettings', settings);
   },
 
   async getStats(): Promise<DashboardStats> {
-    return callCloud<DashboardStats>(NAME, 'getStats');
+    return callCloud<DashboardStats>('stats', 'getStats');
   },
 };

@@ -55,7 +55,7 @@ app.post('/api/auth/login', async (c) => {
   }
 });
 
-// WeChat mini program login
+// WeChat mini program login (by openid directly)
 app.post('/api/auth/wechat', async (c) => {
   try {
     const { openid, nickname } = await c.req.json();
@@ -65,6 +65,37 @@ app.post('/api/auth/wechat', async (c) => {
     const user = wechatLogin(openid, nickname);
     const token = generateToken(user.id);
     return c.json({ code: 0, data: { user, token } });
+  } catch (e: any) {
+    return c.json({ code: 400, msg: e.message }, 400);
+  }
+});
+
+// WeChat mini program login (by wx.login code)
+app.post('/api/auth/wechat-code', async (c) => {
+  try {
+    const { code, nickname } = await c.req.json();
+    if (!code) {
+      return c.json({ code: 400, msg: 'code 不能为空' }, 400);
+    }
+
+    const appId = process.env.WECHAT_APPID;
+    const appSecret = process.env.WECHAT_APPSECRET;
+    if (!appId || !appSecret) {
+      return c.json({ code: 500, msg: '微信登录未配置' }, 500);
+    }
+
+    // Exchange code for openid via WeChat API
+    const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${appSecret}&js_code=${code}&grant_type=authorization_code`;
+    const wxRes = await fetch(wxUrl);
+    const wxData = await wxRes.json() as any;
+
+    if (wxData.errcode) {
+      return c.json({ code: 400, msg: `微信登录失败: ${wxData.errmsg}` }, 400);
+    }
+
+    const user = wechatLogin(wxData.openid, nickname);
+    const token = generateToken(user.id);
+    return c.json({ code: 0, data: { user, token, openid: wxData.openid } });
   } catch (e: any) {
     return c.json({ code: 400, msg: e.message }, 400);
   }
