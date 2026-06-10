@@ -69,3 +69,37 @@ page {
   0% { background-position: 100% 50%; }
   100% { background-position: 0 50%; }
 }
+
+/* === Dark Mode === */
+@media (prefers-color-scheme: dark) {
+  page {
+    color: #fafaf9;
+    background-color: #0c0a09;
+  }
+
+  .card {
+    background: #1c1917;
+    border-color: #292524;
+  }
+
+  .section-title {
+    color: #e7e5e4;
+  }
+
+  .notice-success {
+    background: #052e16;
+    border-color: #166534;
+    color: #4ade80;
+  }
+
+  .notice-error {
+    background: #450a0a;
+    border-color: #991b1b;
+    color: #fca5a5;
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, #292524 25%, #44403c 50%, #292524 75%);
+    background-size: 400% 100%;
+  }
+}

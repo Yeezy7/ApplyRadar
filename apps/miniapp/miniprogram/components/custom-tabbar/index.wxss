@@ -47,3 +47,19 @@
   color: #1c1917;
   font-weight: 600;
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .tabbar {
+    background: #1c1917;
+    border-top-color: #292524;
+  }
+
+  .tabbar-label {
+    color: #78716c;
+  }
+
+  .tabbar-item.active .tabbar-label {
+    color: #fafaf9;
+  }
+}

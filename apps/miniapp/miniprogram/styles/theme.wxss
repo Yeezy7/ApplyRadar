@@ -89,3 +89,50 @@
   font-size: 22rpx;
   font-weight: 500;
 }
+
+/* === Dark Mode === */
+@media (prefers-color-scheme: dark) {
+  .status-to_apply { background: #292524; color: #a8a29e; }
+  .status-applied { background: #1e3a5f; color: #60a5fa; }
+  .status-received { background: #1e3a5f; color: #3b82f6; }
+  .status-under_review { background: #422006; color: #fbbf24; }
+  .status-assessment { background: #3b0764; color: #a78bfa; }
+  .status-interview { background: #052e16; color: #4ade80; }
+  .status-final_interview { background: #022c22; color: #34d399; }
+  .status-offer { background: #022c22; color: #10b981; }
+  .status-rejected { background: #450a0a; color: #f87171; }
+  .status-withdrawn { background: #292524; color: #78716c; }
+  .status-unknown { background: #292524; color: #57534e; }
+
+  .priority-high { background: #450a0a; color: #f87171; }
+  .priority-medium { background: #422006; color: #fbbf24; }
+  .priority-low { background: #292524; color: #78716c; }
+
+  .reminder-interview { background: #292524; color: #a8a29e; }
+  .reminder-assessment_deadline { background: #3b0764; color: #c084fc; }
+  .reminder-offer_deadline { background: #022c22; color: #10b981; }
+  .reminder-follow_up { background: #1e3a5f; color: #60a5fa; }
+  .reminder-document_required { background: #422006; color: #fbbf24; }
+  .reminder-custom { background: #292524; color: #78716c; }
+
+  .btn-primary {
+    background: #fafaf9;
+    color: #1c1917;
+  }
+
+  .btn-secondary {
+    background: #292524;
+    color: #d6d3d1;
+    border-color: #44403c;
+  }
+
+  .input-field {
+    background: #1c1917;
+    border-color: #44403c;
+    color: #fafaf9;
+  }
+
+  .input-field-focus {
+    background: #292524;
+  }
+}
