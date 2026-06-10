@@ -1,6 +1,7 @@
 pub mod validation;
 pub mod application;
 pub mod tracker;
+pub mod auto_check;
 pub mod event;
 pub mod reminder;
 pub mod ai;
