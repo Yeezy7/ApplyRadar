@@ -45,6 +45,7 @@ Page({
       priority: 'medium',
       source: 'manual',
       applied_at: '',
+      deadline_at: '',
       notes: '',
     },
     statusOptions: [] as { label: string; value: string }[],
@@ -60,6 +61,8 @@ Page({
     sourceLabel: '',
     priorityLabel: '',
     appliedDateStr: '',
+    deadlineDateStr: '',
+    isDeadlineSoon: false,
     waitingDays: null as number | null,
 
     // Reminder form
@@ -122,6 +125,8 @@ Page({
         sourceLabel: SOURCE_LABELS[app.source as ApplicationSource] || app.source || '',
         priorityLabel: PRIORITY_LABELS[app.priority as Priority] || app.priority,
         appliedDateStr: formatDate(app.applied_at),
+        deadlineDateStr: formatDate(app.deadline_at),
+        isDeadlineSoon: app.deadline_at ? (new Date(app.deadline_at).getTime() - Date.now()) < 7 * 24 * 60 * 60 * 1000 : false,
         waitingDays: getActiveWaitingDays(app),
         // Set form for editing
         form: {
@@ -135,6 +140,7 @@ Page({
           priority: app.priority,
           source: app.source || 'manual',
           applied_at: app.applied_at ? app.applied_at.split('T')[0] : '',
+          deadline_at: app.deadline_at ? app.deadline_at.split('T')[0] : '',
           notes: app.notes || '',
         },
         statusPickerIndex: statusIndex >= 0 ? statusIndex : 0,
@@ -213,6 +219,7 @@ Page({
         priority: form.priority as Priority,
         source: form.source as ApplicationSource,
         applied_at: form.applied_at ? new Date(form.applied_at).toISOString() : undefined,
+        deadline_at: form.deadline_at ? new Date(form.deadline_at).toISOString() : undefined,
         notes: form.notes.trim() || undefined,
       };
 

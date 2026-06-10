@@ -92,6 +92,56 @@
   display: block;
 }
 
+/* Data Management */
+.data-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.data-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f5f5f4;
+}
+
+.data-action-item:last-child {
+  border-bottom: none;
+}
+
+.data-action-item:active {
+  background: #fafaf9;
+}
+
+.data-action-info {
+  flex: 1;
+}
+
+.data-action-label {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1c1917;
+  display: block;
+}
+
+.data-danger {
+  color: #dc2626;
+}
+
+.data-action-desc {
+  font-size: 22rpx;
+  color: #a8a29e;
+  margin-top: 4rpx;
+  display: block;
+}
+
+.data-action-arrow {
+  font-size: 36rpx;
+  color: #d6d3d1;
+  margin-left: 16rpx;
+}
+
 /* About */
 .about-info {
   display: flex;

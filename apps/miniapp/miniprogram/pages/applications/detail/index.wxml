@@ -72,6 +72,13 @@
         </view>
 
         <view class="form-group">
+          <text class="form-label">截止日期</text>
+          <picker mode="date" value="{{form.deadline_at}}" bindchange="onDateChange" data-field="deadline_at">
+            <view class="input-field picker-field">{{form.deadline_at || '选择截止日期（可选）'}} ▼</view>
+          </picker>
+        </view>
+
+        <view class="form-group">
           <text class="form-label">备注</text>
           <textarea class="input-field textarea-field" value="{{form.notes}}" bindinput="onFormInput" data-field="notes" placeholder="添加备注..." />
         </view>
@@ -127,6 +134,10 @@
           <view class="info-item" wx:if="{{application.applied_at}}">
             <text class="info-label">投递日期</text>
             <text class="info-value">{{appliedDateStr}}</text>
+          </view>
+          <view class="info-item" wx:if="{{deadlineDateStr}}">
+            <text class="info-label">截止日期</text>
+            <text class="info-value {{isDeadlineSoon ? 'days-warning' : ''}}">{{deadlineDateStr}}</text>
           </view>
           <view class="info-item" wx:if="{{waitingDays !== null}}">
             <text class="info-label">等待天数</text>

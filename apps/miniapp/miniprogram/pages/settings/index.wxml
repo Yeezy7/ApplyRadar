@@ -79,6 +79,27 @@
     </view>
   </view>
 
+  <!-- Data Management -->
+  <view class="card section">
+    <view class="section-title">数据管理</view>
+    <view class="data-actions">
+      <view class="data-action-item" bind:tap="exportData">
+        <view class="data-action-info">
+          <text class="data-action-label">导出数据</text>
+          <text class="data-action-desc">将投递记录复制到剪贴板</text>
+        </view>
+        <text class="data-action-arrow">›</text>
+      </view>
+      <view class="data-action-item" bind:tap="clearAllData">
+        <view class="data-action-info">
+          <text class="data-action-label data-danger">清除所有数据</text>
+          <text class="data-action-desc">删除所有投递记录和提醒</text>
+        </view>
+        <text class="data-action-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
   <!-- About -->
   <view class="card section">
     <view class="section-title">关于</view>

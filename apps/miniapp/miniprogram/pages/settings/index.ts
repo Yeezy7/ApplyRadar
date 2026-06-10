@@ -1,4 +1,5 @@
 import { userService, type UserSettings } from '../../services/user';
+import { applicationService } from '../../services/application';
 
 const FREQUENCY_OPTIONS = [
   { label: '手动', value: 'manual' },
@@ -104,5 +105,48 @@ Page({
     } catch (e) {
       wx.showToast({ title: '保存失败', icon: 'none' });
     }
+  },
+
+  async exportData() {
+    try {
+      wx.showLoading({ title: '导出中...' });
+      const apps = await applicationService.list();
+      const data = JSON.stringify(apps, null, 2);
+      wx.hideLoading();
+
+      wx.setClipboardData({
+        data,
+        success: () => wx.showToast({ title: '数据已复制到剪贴板', icon: 'success' }),
+      });
+    } catch (e) {
+      wx.hideLoading();
+      wx.showToast({ title: '导出失败', icon: 'none' });
+    }
+  },
+
+  clearAllData() {
+    wx.showModal({
+      title: '确认清除',
+      content: '此操作将删除所有投递记录和提醒，且无法恢复。确定要继续吗？',
+      confirmColor: '#dc2626',
+      success: async (res) => {
+        if (res.confirm) {
+          try {
+            wx.showLoading({ title: '清除中...' });
+            const apps = await applicationService.list();
+            for (const app of apps) {
+              if (app._id) {
+                await applicationService.remove(app._id);
+              }
+            }
+            wx.hideLoading();
+            wx.showToast({ title: '数据已清除', icon: 'success' });
+          } catch (e) {
+            wx.hideLoading();
+            wx.showToast({ title: '清除失败', icon: 'none' });
+          }
+        }
+      },
+    });
   },
 });
