@@ -41,6 +41,7 @@ Page({
 
   onShow() {
     this.loadApplications();
+    (this as any).selectComponent('#tabbar')?.setCurrent(2);
   },
 
   onPullDownRefresh() {

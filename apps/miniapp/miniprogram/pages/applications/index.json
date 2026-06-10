@@ -3,6 +3,7 @@
   "enablePullDownRefresh": true,
   "usingComponents": {
     "app-card": "../../components/app-card/index",
-    "empty-state": "../../components/empty-state/index"
+    "empty-state": "../../components/empty-state/index",
+    "custom-tabbar": "../../components/custom-tabbar/index"
   }
 }

@@ -38,6 +38,7 @@ Page({
   onShow() {
     this.loadReminders();
     this.loadApplications();
+    (this as any).selectComponent('#tabbar')?.setCurrent(3);
   },
 
   onPullDownRefresh() {

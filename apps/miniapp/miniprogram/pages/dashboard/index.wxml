@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container page-with-tabbar">
   <!-- Loading skeleton -->
   <view wx:if="{{loading}}" class="skeleton-grid">
     <view class="skeleton skeleton-card" wx:for="{{4}}" wx:key="index"></view>
@@ -97,3 +97,4 @@
     </view>
   </block>
 </view>
+<custom-tabbar id="tabbar" />

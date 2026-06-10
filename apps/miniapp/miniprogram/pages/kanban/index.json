@@ -2,6 +2,7 @@
   "navigationBarTitleText": "状态看板",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "empty-state": "../../components/empty-state/index"
+    "empty-state": "../../components/empty-state/index",
+    "custom-tabbar": "../../components/custom-tabbar/index"
   }
 }

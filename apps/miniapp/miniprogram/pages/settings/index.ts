@@ -30,6 +30,10 @@ Page({
     this.loadSettings();
   },
 
+  onShow() {
+    (this as any).selectComponent('#tabbar')?.setCurrent(4);
+  },
+
   async loadSettings() {
     try {
       const settings = await userService.getSettings();

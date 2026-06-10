@@ -27,6 +27,7 @@ Page({
 
   onShow() {
     this.loadDashboard();
+    (this as any).selectComponent('#tabbar')?.setCurrent(0);
   },
 
   async loadDashboard() {

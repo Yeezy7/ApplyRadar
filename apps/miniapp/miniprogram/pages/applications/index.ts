@@ -26,6 +26,7 @@ Page({
   onShow() {
     // Refresh when coming back from detail/create
     this.loadApplications();
+    (this as any).selectComponent('#tabbar')?.setCurrent(1);
   },
 
   onPullDownRefresh() {

@@ -52,6 +52,11 @@ page {
   margin-bottom: 24rpx;
 }
 
+/* TabBar bottom padding */
+.page-with-tabbar {
+  padding-bottom: calc(130rpx + env(safe-area-inset-bottom));
+}
+
 /* Loading skeleton */
 .skeleton {
   background: linear-gradient(90deg, #e7e5e4 25%, #d6d3d1 50%, #e7e5e4 75%);

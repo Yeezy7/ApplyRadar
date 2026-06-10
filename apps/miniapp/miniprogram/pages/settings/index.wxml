@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container page-with-tabbar">
   <!-- AI Configuration -->
   <view class="card section">
     <view class="section-title">AI 配置</view>
@@ -98,3 +98,4 @@
     <text class="save-ok" wx:if="{{saved}}">已保存 ✓</text>
   </view>
 </view>
+<custom-tabbar id="tabbar" />

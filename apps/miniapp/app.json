@@ -15,6 +15,7 @@
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
+    "custom": true,
     "color": "#a8a29e",
     "selectedColor": "#1c1917",
     "backgroundColor": "#ffffff",
@@ -22,33 +23,23 @@
     "list": [
       {
         "pagePath": "pages/dashboard/index",
-        "text": "仪表盘",
-        "iconPath": "miniprogram/styles/icons/dashboard.png",
-        "selectedIconPath": "miniprogram/styles/icons/dashboard-active.png"
+        "text": "仪表盘"
       },
       {
         "pagePath": "pages/applications/index",
-        "text": "投递",
-        "iconPath": "miniprogram/styles/icons/briefcase.png",
-        "selectedIconPath": "miniprogram/styles/icons/briefcase-active.png"
+        "text": "投递"
       },
       {
         "pagePath": "pages/kanban/index",
-        "text": "看板",
-        "iconPath": "miniprogram/styles/icons/kanban.png",
-        "selectedIconPath": "miniprogram/styles/icons/kanban-active.png"
+        "text": "看板"
       },
       {
         "pagePath": "pages/reminders/index",
-        "text": "提醒",
-        "iconPath": "miniprogram/styles/icons/bell.png",
-        "selectedIconPath": "miniprogram/styles/icons/bell-active.png"
+        "text": "提醒"
       },
       {
         "pagePath": "pages/settings/index",
-        "text": "设置",
-        "iconPath": "miniprogram/styles/icons/settings.png",
-        "selectedIconPath": "miniprogram/styles/icons/settings-active.png"
+        "text": "设置"
       }
     ]
   },
