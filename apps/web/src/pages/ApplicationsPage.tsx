@@ -4,6 +4,10 @@ import type { Application, ApplicationStatus } from "@applyradar/shared";
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, ALL_STATUSES } from "@applyradar/shared";
 import { listApplications, deleteApplication } from "../services/applicationService";
 import ApplicationForm from "../components/ApplicationForm";
+import Notice from "../components/Notice";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useNotice } from "../hooks/useNotice";
+import { useConfirm } from "../hooks/useConfirm";
 
 type SortField = "company_name" | "job_title" | "status" | "priority" | "applied_at" | "updated_at";
 type SortDirection = "asc" | "desc";
@@ -42,21 +46,14 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
   const [loading, setLoading] = useState(true);
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
+  const { notice, showSuccess, showError } = useNotice();
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
 
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
   }, [search]);
-
-  // Notice 自动消失
-  useEffect(() => {
-    if (notice) {
-      const timer = setTimeout(() => setNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notice]);
 
   const loadApplications = useCallback(async () => {
     setLoading(true);
@@ -80,14 +77,19 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!window.confirm("确定要删除这条记录吗？")) return;
+    const confirmed = await confirm({
+      title: "删除确认",
+      message: "确定要删除这条求职记录吗？此操作不可撤销。",
+      confirmText: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       await deleteApplication(id);
-      setNotice({ success: true, message: "求职记录已删除" });
+      showSuccess("求职记录已删除");
       await loadApplications();
     } catch (e) {
-      console.error("Failed to delete:", e);
-      setNotice({ success: false, message: `删除失败: ${e instanceof Error ? e.message : String(e)}` });
+      showError(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -195,14 +197,23 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       </div>
 
       {notice && (
-        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-          notice.success
-            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-            : "border-red-100 bg-red-50 text-red-700"
-        }`}>
-          {notice.message}
-        </div>
+        <Notice
+          success={notice.success}
+          message={notice.message}
+          onClose={() => {}}
+        />
       )}
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       {/* Table */}
       <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
