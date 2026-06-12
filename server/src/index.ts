@@ -20,6 +20,7 @@ import aiRoutes from './routes/ai.js';
 import backupRoutes from './routes/backup.js';
 import emailRoutes from './routes/email.js';
 import autoCheckRoutes from './routes/autoCheck.js';
+import syncRoutes from './routes/sync.js';
 
 const app = new Hono<AppEnv>();
 
@@ -195,6 +196,7 @@ app.use('/api/ai/*', authMiddleware);
 app.use('/api/backup/*', authMiddleware);
 app.use('/api/email/*', authMiddleware);
 app.use('/api/auto-check/*', authMiddleware);
+app.use('/api/sync/*', authMiddleware);
 
 app.route('/api/applications', applicationRoutes);
 app.route('/api/events', eventRoutes);
@@ -207,6 +209,7 @@ app.route('/api/ai', aiRoutes);
 app.route('/api/backup', backupRoutes);
 app.route('/api/email', emailRoutes);
 app.route('/api/auto-check', autoCheckRoutes);
+app.route('/api/sync', syncRoutes);
 
 // Scheduler status and manual triggers
 app.get('/api/scheduler/status', authMiddleware, (c) => {

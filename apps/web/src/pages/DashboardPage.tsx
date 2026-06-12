@@ -3,7 +3,6 @@ import {
   BriefcaseBusiness,
   TrendingUp,
   CalendarDays,
-  AlertTriangle,
   Clock3,
   CheckCircle2,
   BarChart3,

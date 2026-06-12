@@ -65,7 +65,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       setApplications(data);
     } catch (e) {
       console.error("Failed to load applications:", e);
-      setNotice({ success: false, message: `加载求职记录失败: ${e instanceof Error ? e.message : String(e)}` });
+      showError(`加载求职记录失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -377,7 +377,13 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
       {showForm && (
         <ApplicationForm
           application={editingApp}
-          onSaved={setNotice}
+          onSaved={(notice) => {
+            if (notice.success) {
+              showSuccess(notice.message);
+            } else {
+              showError(notice.message);
+            }
+          }}
           onClose={handleFormClose}
         />
       )}

@@ -338,7 +338,7 @@ export default function ApplicationDetailPage({
             }
           }
 
-          setNotice({ success: true, message: action === "accepted" ? "已采用该状态变更" : "已忽略该状态变更" });
+          showSuccess(action === "accepted" ? "已采用该状态变更" : "已忽略该状态变更");
         }}
       />
 
@@ -353,7 +353,13 @@ export default function ApplicationDetailPage({
       {showEditForm && (
         <ApplicationForm
           application={app}
-          onSaved={setNotice}
+          onSaved={(notice) => {
+            if (notice.success) {
+              showSuccess(notice.message);
+            } else {
+              showError(notice.message);
+            }
+          }}
           onClose={() => {
             setShowEditForm(false);
             loadData();

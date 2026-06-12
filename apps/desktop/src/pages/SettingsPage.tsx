@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, RotateCcw, TestTube2, Check, AlertCircle, FolderOpen } from "lucide-react";
+import { Eye, EyeOff, RotateCcw, TestTube2, Check, AlertCircle, FolderOpen, Cloud, RefreshCw, Upload, Download } from "lucide-react";
 import { getSettings, saveSettings, loadSettings, DEFAULT_SETTINGS, type AppSettings } from "../stores/settings";
 import { aiService, sidecarService, emailService } from "../services";
 import { requestPermission, isPermissionGranted } from "@tauri-apps/plugin-notification";
 import DataBackupSection from "../components/DataBackupSection";
+import { getSyncConfig, saveSyncConfig, executeSync, pushToCloud, pullFromCloud, type SyncConfig, type SyncResult } from "../services/syncService";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings>(getSettings);
@@ -19,6 +20,12 @@ export default function SettingsPage() {
   const [appDataDir, setAppDataDir] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // 同步相关状态
+  const [syncConfig, setSyncConfig] = useState<SyncConfig>(getSyncConfig);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [showToken, setShowToken] = useState(false);
 
   useEffect(() => {
     loadSettings().then(setSettings).catch(() => {});
@@ -98,6 +105,60 @@ export default function SettingsPage() {
     }
   };
 
+
+  // 同步配置变更
+  const handleSyncConfigChange = (updates: Partial<SyncConfig>) => {
+    const newConfig = { ...syncConfig, ...updates };
+    setSyncConfig(newConfig);
+    saveSyncConfig(newConfig);
+  };
+
+  // 执行同步
+  const handleSync = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const { strategy, result } = await executeSync();
+      const msg = strategy === "local"
+        ? `上传成功: ${(result as SyncResult).applications.created + (result as SyncResult).applications.updated} 条记录`
+        : strategy === "remote"
+          ? `下载成功: ${(result as any).applications.length} 条记录`
+          : `合并成功: ${(result as SyncResult).applications.created} 新增, ${(result as SyncResult).applications.updated} 更新`;
+      setSyncResult({ ok: true, msg });
+    } catch (e) {
+      setSyncResult({ ok: false, msg: `同步失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // 仅上传
+  const handlePush = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await pushToCloud();
+      setSyncResult({ ok: true, msg: `上传成功: ${result.applications.created + result.applications.updated} 条记录` });
+    } catch (e) {
+      setSyncResult({ ok: false, msg: `上传失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // 仅下载
+  const handlePull = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const result = await pullFromCloud();
+      setSyncResult({ ok: true, msg: `下载成功: ${result.applications.length} 条记录，请刷新页面查看` });
+    } catch (e) {
+      setSyncResult({ ok: false, msg: `下载失败: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleNotificationToggle = async () => {
     if (!settings.notificationsEnabled) {
@@ -431,6 +492,168 @@ export default function SettingsPage() {
         <p className="text-[11px] text-gray-400 mt-3">
           数据库、浏览器 Profile 和配置文件存储在此目录
         </p>
+      </section>
+
+      {/* Cloud Sync */}
+      <section className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
+        <h2 className="text-base font-semibold text-gray-900 mb-5">云端同步</h2>
+        <div className="space-y-5">
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <div className="text-sm font-medium text-gray-900">启用云端同步</div>
+              <div className="text-xs text-gray-400 mt-0.5">
+                将数据同步到云端服务器，实现多设备共享
+              </div>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={syncConfig.enabled}
+              onClick={() => handleSyncConfigChange({ enabled: !syncConfig.enabled })}
+              className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-stone-500/20 ${
+                syncConfig.enabled ? "bg-stone-900" : "bg-gray-300"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                  syncConfig.enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+
+          {syncConfig.enabled && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">
+                  API 地址
+                </label>
+                <input
+                  type="url"
+                  value={syncConfig.apiBase}
+                  onChange={(e) => handleSyncConfigChange({ apiBase: e.target.value })}
+                  placeholder="http://127.0.0.1:3000"
+                  className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">
+                  API Token
+                </label>
+                <div className="relative">
+                  <input
+                    type={showToken ? "text" : "password"}
+                    value={syncConfig.token}
+                    onChange={(e) => handleSyncConfigChange({ token: e.target.value })}
+                    placeholder="登录后获取的 token"
+                    className="w-full px-3.5 py-2.5 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-stone-500/20 focus:border-stone-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowToken(!showToken)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    {showToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 mt-1.5">
+                  在 Web 端登录后，从浏览器开发者工具获取 token
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">
+                  冲突策略
+                </label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="conflictStrategy"
+                      value="local"
+                      checked={syncConfig.conflictStrategy === "local"}
+                      onChange={() => handleSyncConfigChange({ conflictStrategy: "local" })}
+                      className="text-stone-900 focus:ring-stone-500"
+                    />
+                    <div>
+                      <span className="text-sm text-gray-900">以本地为准</span>
+                      <span className="text-xs text-gray-400 ml-2">上传覆盖云端</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="conflictStrategy"
+                      value="remote"
+                      checked={syncConfig.conflictStrategy === "remote"}
+                      onChange={() => handleSyncConfigChange({ conflictStrategy: "remote" })}
+                      className="text-stone-900 focus:ring-stone-500"
+                    />
+                    <div>
+                      <span className="text-sm text-gray-900">以云端为准</span>
+                      <span className="text-xs text-gray-400 ml-2">下载覆盖本地</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="conflictStrategy"
+                      value="merge"
+                      checked={syncConfig.conflictStrategy === "merge"}
+                      onChange={() => handleSyncConfigChange({ conflictStrategy: "merge" })}
+                      className="text-stone-900 focus:ring-stone-500"
+                    />
+                    <div>
+                      <span className="text-sm text-gray-900">智能合并</span>
+                      <span className="text-xs text-gray-400 ml-2">按更新时间取最新</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={handleSync}
+                  disabled={syncing || !syncConfig.token}
+                  className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-xl text-sm font-medium hover:bg-stone-800 disabled:opacity-50 transition-all shadow-sm"
+                >
+                  <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+                  {syncing ? "同步中..." : "立即同步"}
+                </button>
+                <button
+                  onClick={handlePush}
+                  disabled={syncing || !syncConfig.token}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 bg-stone-50 hover:bg-stone-100 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  上传本地
+                </button>
+                <button
+                  onClick={handlePull}
+                  disabled={syncing || !syncConfig.token}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-stone-700 bg-stone-50 hover:bg-stone-100 rounded-xl disabled:opacity-50 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  下载云端
+                </button>
+              </div>
+
+              {syncResult && (
+                <div className={`flex items-center gap-1.5 text-sm ${syncResult.ok ? "text-green-600" : "text-red-500"}`}>
+                  {syncResult.ok ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {syncResult.msg}
+                </div>
+              )}
+
+              {syncConfig.lastSyncAt && (
+                <p className="text-xs text-gray-400">
+                  上次同步: {new Date(syncConfig.lastSyncAt).toLocaleString("zh-CN")}
+                </p>
+              )}
+            </>
+          )}
+        </div>
       </section>
 
       {/* Data Backup */}
