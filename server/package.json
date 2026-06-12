@@ -10,18 +10,20 @@
     "db:init": "tsx src/db.ts --init"
   },
   "dependencies": {
-    "hono": "^4.4.0",
     "@hono/node-server": "^1.11.0",
-    "better-sqlite3": "^11.0.0",
-    "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
-    "dotenv": "^16.4.5"
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.10",
     "@types/jsonwebtoken": "^9.0.6",
-    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.14.0",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.15.0",
     "typescript": "^5.4.5"
   }

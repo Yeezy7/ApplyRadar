@@ -5,11 +5,18 @@ import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
 import { initDatabase } from './db.js';
 import { authMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
+import { initScheduler, getSchedulerStatus, triggerAutoCheck, triggerEmailReport } from './scheduler.js';
 import applicationRoutes from './routes/application.js';
 import eventRoutes from './routes/event.js';
 import reminderRoutes from './routes/reminder.js';
 import settingsRoutes from './routes/settings.js';
 import statsRoutes from './routes/stats.js';
+import trackingRoutes from './routes/tracking.js';
+import pushLogRoutes from './routes/pushLog.js';
+import aiRoutes from './routes/ai.js';
+import backupRoutes from './routes/backup.js';
+import emailRoutes from './routes/email.js';
+import autoCheckRoutes from './routes/autoCheck.js';
 
 const app = new Hono();
 
@@ -107,15 +114,48 @@ app.use('/api/events/*', authMiddleware);
 app.use('/api/reminders/*', authMiddleware);
 app.use('/api/settings/*', authMiddleware);
 app.use('/api/stats/*', authMiddleware);
+app.use('/api/tracking/*', authMiddleware);
+app.use('/api/push-logs/*', authMiddleware);
+app.use('/api/ai/*', authMiddleware);
+app.use('/api/backup/*', authMiddleware);
+app.use('/api/email/*', authMiddleware);
+app.use('/api/auto-check/*', authMiddleware);
 
 app.route('/api/applications', applicationRoutes);
 app.route('/api/events', eventRoutes);
 app.route('/api/reminders', reminderRoutes);
 app.route('/api/settings', settingsRoutes);
 app.route('/api/stats', statsRoutes);
+app.route('/api/tracking', trackingRoutes);
+app.route('/api/push-logs', pushLogRoutes);
+app.route('/api/ai', aiRoutes);
+app.route('/api/backup', backupRoutes);
+app.route('/api/email', emailRoutes);
+app.route('/api/auto-check', autoCheckRoutes);
+
+// Scheduler status and manual triggers
+app.get('/api/scheduler/status', authMiddleware, (c) => {
+  const status = getSchedulerStatus();
+  return c.json({ code: 0, data: status });
+});
+
+app.post('/api/scheduler/auto-check', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const result = await triggerAutoCheck(userId);
+  return c.json({ code: 0, data: result });
+});
+
+app.post('/api/scheduler/email-report', authMiddleware, async (c) => {
+  const userId = c.get('userId');
+  const result = await triggerEmailReport(userId);
+  return c.json({ code: 0, data: result });
+});
 
 // Init database and start server
 initDatabase();
+
+// Initialize scheduler
+initScheduler();
 
 const port = parseInt(process.env.PORT || '3000');
 const host = process.env.HOST || '0.0.0.0';

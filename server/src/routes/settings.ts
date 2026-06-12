@@ -29,8 +29,8 @@ app.put('/', async (c) => {
   if (!existing) {
     const id = generateId();
     db.prepare(
-      `INSERT INTO user_settings (id, user_id, api_key, api_base_url, model, check_frequency, notifications_enabled)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO user_settings (id, user_id, api_key, api_base_url, model, check_frequency, notifications_enabled, auto_check_enabled, email_report_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_recipient, email_report_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       userId,
@@ -38,17 +38,29 @@ app.put('/', async (c) => {
       body.api_base_url || 'https://api.openai.com/v1',
       body.model || 'gpt-4o-mini',
       body.check_frequency || 'daily',
-      body.notifications_enabled !== false ? 1 : 0
+      body.notifications_enabled !== false ? 1 : 0,
+      body.auto_check_enabled ? 1 : 0,
+      body.email_report_enabled ? 1 : 0,
+      body.smtp_host || '',
+      body.smtp_port || '465',
+      body.smtp_username || '',
+      body.smtp_password || '',
+      body.smtp_recipient || '',
+      body.email_report_time || '09:00'
     );
   } else {
     const fields: string[] = [];
     const params: any[] = [];
 
-    const allowedFields = ['api_key', 'api_base_url', 'model', 'check_frequency', 'notifications_enabled'];
+    const allowedFields = [
+      'api_key', 'api_base_url', 'model', 'check_frequency', 'notifications_enabled',
+      'auto_check_enabled', 'email_report_enabled', 'smtp_host', 'smtp_port',
+      'smtp_username', 'smtp_password', 'smtp_recipient', 'email_report_time'
+    ];
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        if (field === 'notifications_enabled') {
+        if (field === 'notifications_enabled' || field === 'auto_check_enabled' || field === 'email_report_enabled') {
           fields.push(`${field} = ?`);
           params.push(body[field] ? 1 : 0);
         } else {

@@ -3,7 +3,9 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @applyradar/desktop dev",
+    "dev:web": "pnpm --filter @applyradar/web dev",
     "build": "pnpm --filter @applyradar/desktop build",
+    "build:web": "pnpm --filter @applyradar/web build",
     "tauri": "pnpm --filter @applyradar/desktop tauri",
     "build:sidecar": "pnpm --filter @applyradar/automation build"
   }

@@ -15,17 +15,17 @@ export const STATUS_LABELS: Record<ApplicationStatus, string> = {
 };
 
 export const STATUS_COLORS: Record<ApplicationStatus, string> = {
-  to_apply: "bg-gray-100 text-gray-700",
-  applied: "bg-blue-100 text-blue-700",
-  received: "bg-cyan-100 text-cyan-700",
-  under_review: "bg-yellow-100 text-yellow-700",
-  assessment: "bg-purple-100 text-purple-700",
-  interview: "bg-indigo-100 text-indigo-700",
-  final_interview: "bg-violet-100 text-violet-700",
-  offer: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
-  withdrawn: "bg-orange-100 text-orange-700",
-  unknown: "bg-gray-100 text-gray-500",
+  to_apply: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  applied: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  received: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
+  under_review: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  assessment: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  interview: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+  final_interview: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400",
+  offer: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  rejected: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  withdrawn: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  unknown: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
 };
 
 export const LOGIN_STATE_LABELS: Record<LoginState, string> = {
@@ -53,9 +53,9 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 };
 
 export const PRIORITY_COLORS: Record<Priority, string> = {
-  low: "bg-gray-100 text-gray-600",
-  medium: "bg-blue-100 text-blue-600",
-  high: "bg-red-100 text-red-600",
+  low: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  medium: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+  high: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400",
 };
 
 export const REMINDER_TYPE_LABELS: Record<ReminderType, string> = {
