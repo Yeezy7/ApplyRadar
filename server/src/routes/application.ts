@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { validateBody, applicationSchema } from '../validate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -45,9 +46,9 @@ app.get('/:id', (c) => {
 });
 
 // Create application
-app.post('/', async (c) => {
+app.post('/', validateBody(applicationSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const id = generateId();
   const now = new Date().toISOString();
@@ -80,10 +81,10 @@ app.post('/', async (c) => {
 });
 
 // Update application
-app.put('/:id', async (c) => {
+app.put('/:id', validateBody(applicationSchema.partial()), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const existing = db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(id, userId);
   if (!existing) {

@@ -2,6 +2,17 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { z } from 'zod';
+import { validateBody } from '../validate.js';
+
+const trackingTargetSchema = z.object({
+  application_id: z.string().uuid(),
+  domain: z.string().min(1).max(200),
+  status_url: z.string().url().max(500),
+  ats_type: z.string().max(50).optional(),
+  enabled: z.number().int().min(0).max(1).optional(),
+  check_frequency: z.enum(['manual', 'daily', 'every_12h', 'every_6h']).optional(),
+});
 
 const app = new Hono<AppEnv>();
 
@@ -38,9 +49,9 @@ app.get('/:id', (c) => {
 });
 
 // Create tracking target
-app.post('/', async (c) => {
+app.post('/', validateBody(trackingTargetSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const id = generateId();
   const now = new Date().toISOString();

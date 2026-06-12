@@ -53,9 +53,9 @@ export async function authMiddleware(c: Context, next: Next) {
 }
 
 // Register with email/password
-export function registerUser(email: string, password: string, nickname?: string) {
+export async function registerUser(email: string, password: string, nickname?: string) {
   const id = generateId();
-  const passwordHash = bcrypt.hashSync(password, 10);
+  const passwordHash = await bcrypt.hash(password, 10);
 
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) {
@@ -75,7 +75,7 @@ export function registerUser(email: string, password: string, nickname?: string)
 }
 
 // Login with email/password
-export function loginUser(email: string, password: string) {
+export async function loginUser(email: string, password: string) {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
   if (!user) {
     throw new Error('用户不存在');
@@ -85,7 +85,7 @@ export function loginUser(email: string, password: string) {
     throw new Error('该账号未设置密码，请使用微信登录');
   }
 
-  const valid = bcrypt.compareSync(password, user.password_hash);
+  const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
     throw new Error('密码错误');
   }

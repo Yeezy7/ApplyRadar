@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from './types.js';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
 import { serve } from '@hono/node-server';
 import { initDatabase } from './db.js';
 import { authMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
@@ -100,6 +101,9 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// 安全响应头
+app.use('*', secureHeaders());
+
 // Health check
 app.get('/', (c) => {
   return c.json({ name: 'ApplyRadar API', version: '1.0.0', status: 'ok' });
@@ -110,7 +114,7 @@ app.post('/api/auth/register', validateBody(registerSchema), async (c) => {
   try {
     const body = c.get('validatedBody') as any;
     const { email, password, nickname } = body;
-    const user = registerUser(email, password, nickname);
+    const user = await registerUser(email, password, nickname);
     const token = generateToken(user.id);
     return c.json({ code: 0, data: { user, token } });
   } catch (e: any) {
@@ -125,7 +129,7 @@ app.post('/api/auth/login', validateBody(loginSchema), async (c) => {
     if (!email || !password) {
       return c.json({ code: 400, msg: '邮箱和密码不能为空' }, 400);
     }
-    const user = loginUser(email, password);
+    const user = await loginUser(email, password);
     const token = generateToken(user.id);
     return c.json({ code: 0, data: { user, token } });
   } catch (e: any) {

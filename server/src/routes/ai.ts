@@ -1,7 +1,12 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
-import { isPrivateUrl } from '../validate.js';
+import { z } from 'zod';
+import { isPrivateUrl, validateBody } from '../validate.js';
+
+const parseJdSchema = z.object({
+  text: z.string().min(1).max(10000),
+});
 
 const app = new Hono<AppEnv>();
 
@@ -61,9 +66,9 @@ app.post('/test-connection', async (c) => {
 });
 
 // Parse job description with AI
-app.post('/parse-jd', async (c) => {
+app.post('/parse-jd', validateBody(parseJdSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
 

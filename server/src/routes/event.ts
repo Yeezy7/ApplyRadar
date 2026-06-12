@@ -2,6 +2,18 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { z } from 'zod';
+import { validateBody } from '../validate.js';
+
+const eventSchema = z.object({
+  application_id: z.string().uuid(),
+  event_type: z.enum(['status_change', 'login_expired', 'check_success', 'check_failed', 'note_added', 'manual']),
+  title: z.string().min(1).max(200),
+  content: z.string().max(2000).optional(),
+  old_status: z.string().max(50).optional(),
+  new_status: z.string().max(50).optional(),
+  event_time: z.string().optional(),
+});
 
 const app = new Hono<AppEnv>();
 
@@ -25,9 +37,9 @@ app.get('/', (c) => {
 });
 
 // Create event
-app.post('/', async (c) => {
+app.post('/', validateBody(eventSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const id = generateId();
   const now = new Date().toISOString();

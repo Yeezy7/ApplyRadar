@@ -95,20 +95,42 @@ export function escapeHtml(str: string): string {
 export function isPrivateUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    const hostname = parsed.hostname;
+    const hostname = parsed.hostname.toLowerCase();
 
     // 检查内网地址
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+    if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname)) {
       return true;
     }
 
+    // 检查 IPv6 映射的 IPv4 地址
+    if (hostname.startsWith('::ffff:')) {
+      const ip = hostname.slice(7);
+      if (ip === '127.0.0.1' || ip.startsWith('10.') || ip.startsWith('172.') || ip.startsWith('192.168.')) {
+        return true;
+      }
+    }
+
     // 检查私有 IP 段
-    if (hostname.startsWith('10.') || hostname.startsWith('172.') || hostname.startsWith('192.168.')) {
-      return true;
+    const parts = hostname.split('.');
+    if (parts.length === 4) {
+      const first = parseInt(parts[0]);
+      const second = parseInt(parts[1]);
+
+      // 10.0.0.0/8
+      if (first === 10) return true;
+      // 172.16.0.0/12
+      if (first === 172 && second >= 16 && second <= 31) return true;
+      // 192.168.0.0/16
+      if (first === 192 && second === 168) return true;
     }
 
     // 检查链路本地地址
     if (hostname.startsWith('169.254.') || hostname.startsWith('fe80:')) {
+      return true;
+    }
+
+    // 检查元数据地址
+    if (hostname === 'metadata.google.internal' || hostname === '169.254.169.254') {
       return true;
     }
 

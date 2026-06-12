@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { validateBody, reminderSchema } from '../validate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -30,9 +31,9 @@ app.get('/', (c) => {
 });
 
 // Create reminder
-app.post('/', async (c) => {
+app.post('/', validateBody(reminderSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const id = generateId();
   const now = new Date().toISOString();
@@ -61,10 +62,10 @@ app.post('/', async (c) => {
 });
 
 // Update reminder
-app.put('/:id', async (c) => {
+app.put('/:id', validateBody(reminderSchema.partial()), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const existing = db.prepare('SELECT * FROM reminders WHERE id = ? AND user_id = ?').get(id, userId);
   if (!existing) {
