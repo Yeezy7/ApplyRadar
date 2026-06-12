@@ -10,6 +10,10 @@ import {
   updateReminder,
 } from "../services/reminderService";
 import { listApplications } from "../services/applicationService";
+import Notice from "../components/Notice";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useNotice } from "../hooks/useNotice";
+import { useConfirm } from "../hooks/useConfirm";
 
 const REMINDER_TYPE_COLORS: Record<string, string> = {
   interview: "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
@@ -37,7 +41,8 @@ export default function RemindersPage() {
   const [formAppId, setFormAppId] = useState("");
   const [applications, setApplications] = useState<{ id: string; company_name: string; job_title: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
+  const { notice, showSuccess, showError } = useNotice();
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
 
   const loadReminders = useCallback(async () => {
     setLoading(true);
@@ -66,40 +71,38 @@ export default function RemindersPage() {
     loadReminders();
   }, [loadReminders]);
 
-  // Notice 自动消失
-  useEffect(() => {
-    if (notice) {
-      const timer = setTimeout(() => setNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notice]);
-
   const handleMarkDone = async (id: string) => {
     try {
       setReminders((prev) =>
         prev.map((r) => (r.id === id ? { ...r, is_done: 1 } : r))
       );
       await markReminderDone(id);
-      setNotice({ success: true, message: "提醒已完成" });
+      showSuccess("提醒已完成");
     } catch (e) {
       console.error("Failed to mark reminder done:", e);
       setReminders((prev) =>
         prev.map((r) => (r.id === id ? { ...r, is_done: 0 } : r))
       );
-      setNotice({ success: false, message: `完成提醒失败: ${e instanceof Error ? e.message : String(e)}` });
+      showError(`完成提醒失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("确定要删除这个提醒吗？")) return;
+    const confirmed = await confirm({
+      title: "删除确认",
+      message: "确定要删除这个提醒吗？",
+      confirmText: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       setReminders((prev) => prev.filter((r) => r.id !== id));
       await deleteReminder(id);
-      setNotice({ success: true, message: "提醒已删除" });
+      showSuccess("提醒已删除");
     } catch (e) {
       console.error("Failed to delete reminder:", e);
-      setNotice({ success: false, message: `删除提醒失败: ${e instanceof Error ? e.message : String(e)}` });
+      showError(`删除提醒失败: ${e instanceof Error ? e.message : String(e)}`);
       await loadReminders();
     }
   };
@@ -126,7 +129,7 @@ export default function RemindersPage() {
           remind_at: new Date(formRemindAt).toISOString(),
           application_id: formAppId || undefined,
         });
-        setNotice({ success: true, message: "提醒已更新" });
+        showSuccess("提醒已更新");
       } else {
         await createReminder({
           title: formTitle.trim(),
@@ -135,14 +138,14 @@ export default function RemindersPage() {
           remind_at: new Date(formRemindAt).toISOString(),
           application_id: formAppId || undefined,
         });
-        setNotice({ success: true, message: "提醒已创建" });
+        showSuccess("提醒已创建");
       }
       setShowForm(false);
       resetForm();
       await loadReminders();
     } catch (e) {
       console.error("Failed to save reminder:", e);
-      setNotice({ success: false, message: `保存提醒失败: ${e instanceof Error ? e.message : String(e)}` });
+      showError(`保存提醒失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSubmitting(false);
     }
@@ -234,14 +237,22 @@ export default function RemindersPage() {
       </div>
 
       {notice && (
-        <div className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-          notice.success
-            ? "border-emerald-100 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
-            : "border-red-100 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-        }`}>
-          {notice.message}
-        </div>
+        <Notice
+          success={notice.success}
+          message={notice.message}
+          onClose={() => {}}
+        />
       )}
+
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       {/* Content */}
       {loading ? (

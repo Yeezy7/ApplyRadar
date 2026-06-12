@@ -25,6 +25,10 @@ import {
   downloadBackup,
   readBackupFile,
 } from "../services/backupService";
+import Notice from "../components/Notice";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useNotice } from "../hooks/useNotice";
+import { useConfirm } from "../hooks/useConfirm";
 
 interface SettingsPageProps {
   onLogout: () => void;
@@ -36,10 +40,8 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showSmtpPassword, setShowSmtpPassword] = useState(false);
-  const [notice, setNotice] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
+  const { notice, showSuccess, showError } = useNotice();
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -61,14 +63,6 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
   useEffect(() => {
     loadSettings();
   }, []);
-
-  // Notice 自动消失
-  useEffect(() => {
-    if (notice) {
-      const timer = setTimeout(() => setNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notice]);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -102,12 +96,9 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
         smtp_recipient: settings.smtp_recipient,
         email_report_time: settings.email_report_time,
       });
-      setNotice({ success: true, message: "设置已保存" });
+      showSuccess("设置已保存");
     } catch (e) {
-      setNotice({
-        success: false,
-        message: `保存失败: ${e instanceof Error ? e.message : String(e)}`,
-      });
+      showError(`保存失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSaving(false);
     }
@@ -160,12 +151,9 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
     try {
       const data = await exportData();
       downloadBackup(data);
-      setNotice({ success: true, message: "数据导出成功" });
+      showSuccess("数据导出成功");
     } catch (e) {
-      setNotice({
-        success: false,
-        message: `导出失败: ${e instanceof Error ? e.message : String(e)}`,
-      });
+      showError(`导出失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExporting(false);
     }
@@ -183,15 +171,9 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
       try {
         const data = await readBackupFile(file);
         const result = await importData(data);
-        setNotice({
-          success: true,
-          message: `导入完成: ${result.applications} 条记录, ${result.reminders} 条提醒`,
-        });
+        showSuccess(`导入完成: ${result.applications} 条记录, ${result.reminders} 条提醒`);
       } catch (e) {
-        setNotice({
-          success: false,
-          message: `导入失败: ${e instanceof Error ? e.message : String(e)}`,
-        });
+        showError(`导入失败: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
         setImporting(false);
       }
@@ -220,27 +202,40 @@ export default function SettingsPage({ onLogout }: SettingsPageProps) {
       created_at: settings?.created_at || new Date().toISOString(),
       updated_at: settings?.updated_at || new Date().toISOString(),
     });
-    setNotice({ success: true, message: "已恢复默认设置，请点击保存" });
+    showSuccess("已恢复默认设置，请点击保存");
   };
 
-  const handleLogout = () => {
-    if (!window.confirm("确定要退出登录吗？")) return;
-    onLogout();
+  const handleLogout = async () => {
+    const confirmed = await confirm({
+      title: "退出登录",
+      message: "确定要退出登录吗？",
+      confirmText: "退出",
+      variant: "warning",
+    });
+    if (confirmed) {
+      onLogout();
+    }
   };
 
   return (
     <div className="max-w-3xl px-4 pb-6 pt-2">
       {notice && (
-        <div
-          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-            notice.success
-              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-              : "border-red-100 bg-red-50 text-red-700"
-          }`}
-        >
-          {notice.message}
-        </div>
+        <Notice
+          success={notice.success}
+          message={notice.message}
+          onClose={() => {}}
+        />
       )}
+
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       {/* AI Configuration */}
       <section className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
