@@ -194,6 +194,8 @@ export async function pushToCloud(): Promise<SyncResult> {
       body: JSON.stringify({
         applications: localData.applications,
         reminders: localData.reminders,
+        tracking_targets: localData.tracking_targets,
+        settings: localData.settings,
       }),
     }
   );
@@ -248,6 +250,8 @@ export async function mergeData(): Promise<SyncResult> {
       body: JSON.stringify({
         applications: localData.applications,
         reminders: localData.reminders,
+        tracking_targets: localData.tracking_targets,
+        settings: localData.settings,
       }),
     }
   );
