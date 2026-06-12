@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
+import { isPrivateUrl } from '../validate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -18,6 +19,11 @@ app.post('/test-connection', async (c) => {
   try {
     const baseUrl = settings.api_base_url || 'https://api.openai.com/v1';
     const model = settings.model || 'gpt-4o-mini';
+
+    // SSRF 防护
+    if (isPrivateUrl(baseUrl)) {
+      return c.json({ code: 400, msg: '不允许访问内网地址' }, 400);
+    }
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -68,6 +74,11 @@ app.post('/parse-jd', async (c) => {
   try {
     const baseUrl = settings.api_base_url || 'https://api.openai.com/v1';
     const model = settings.model || 'gpt-4o-mini';
+
+    // SSRF 防护
+    if (isPrivateUrl(baseUrl)) {
+      return c.json({ code: 400, msg: '不允许访问内网地址' }, 400);
+    }
 
     const prompt = `请从以下职位描述中提取信息，返回 JSON 格式：
 {

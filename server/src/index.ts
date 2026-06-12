@@ -7,6 +7,7 @@ import { serve } from '@hono/node-server';
 import { initDatabase } from './db.js';
 import { authMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
 import { initScheduler, getSchedulerStatus, triggerAutoCheck, triggerEmailReport } from './scheduler.js';
+import { validateBody, loginSchema, registerSchema } from './validate.js';
 import applicationRoutes from './routes/application.js';
 import eventRoutes from './routes/event.js';
 import reminderRoutes from './routes/reminder.js';
@@ -21,13 +22,83 @@ import autoCheckRoutes from './routes/autoCheck.js';
 
 const app = new Hono<AppEnv>();
 
+// CORS 白名单
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(',');
+
+// Rate Limiting 简单实现
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function getRateLimit(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+
+  if (entry.count >= limit) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
+
+// 每分钟清理过期的 rate limit 记录
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap.entries()) {
+    if (now > entry.resetAt) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 60000);
+
 // Middleware
 app.use('*', cors({
-  origin: '*',
+  origin: (origin) => {
+    // 允许无 origin（如 curl 请求）
+    if (!origin) return origin;
+    // 检查白名单
+    if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
+      return origin;
+    }
+    return null;
+  },
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
 app.use('*', logger());
+
+// Rate limiting 中间件
+app.use('*', async (c, next) => {
+  const path = c.req.path;
+  const ip = c.req.header('x-forwarded-for') || 'unknown';
+  const key = `${ip}:${path}`;
+
+  // 登录接口：5次/分钟
+  if (path === '/api/auth/login') {
+    if (!getRateLimit(key, 5, 60000)) {
+      return c.json({ code: 429, msg: '请求过于频繁，请稍后再试' }, 429);
+    }
+  }
+  // 注册接口：3次/分钟
+  else if (path === '/api/auth/register') {
+    if (!getRateLimit(key, 3, 60000)) {
+      return c.json({ code: 429, msg: '请求过于频繁，请稍后再试' }, 429);
+    }
+  }
+  // 其他接口：100次/分钟
+  else if (path.startsWith('/api/')) {
+    if (!getRateLimit(key, 100, 60000)) {
+      return c.json({ code: 429, msg: '请求过于频繁，请稍后再试' }, 429);
+    }
+  }
+
+  await next();
+});
 
 // Health check
 app.get('/', (c) => {
@@ -35,12 +106,10 @@ app.get('/', (c) => {
 });
 
 // Public routes
-app.post('/api/auth/register', async (c) => {
+app.post('/api/auth/register', validateBody(registerSchema), async (c) => {
   try {
-    const { email, password, nickname } = await c.req.json();
-    if (!email || !password) {
-      return c.json({ code: 400, msg: '邮箱和密码不能为空' }, 400);
-    }
+    const body = c.get('validatedBody') as any;
+    const { email, password, nickname } = body;
     const user = registerUser(email, password, nickname);
     const token = generateToken(user.id);
     return c.json({ code: 0, data: { user, token } });
@@ -49,9 +118,10 @@ app.post('/api/auth/register', async (c) => {
   }
 });
 
-app.post('/api/auth/login', async (c) => {
+app.post('/api/auth/login', validateBody(loginSchema), async (c) => {
   try {
-    const { email, password } = await c.req.json();
+    const body = c.get('validatedBody') as any;
+    const { email, password } = body;
     if (!email || !password) {
       return c.json({ code: 400, msg: '邮箱和密码不能为空' }, 400);
     }

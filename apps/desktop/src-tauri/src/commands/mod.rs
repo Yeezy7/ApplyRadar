@@ -9,3 +9,4 @@ pub mod sidecar;
 pub mod settings;
 pub mod email;
 pub mod push_log;
+pub mod backup;

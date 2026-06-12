@@ -2,7 +2,7 @@ mod db;
 mod commands;
 
 use chrono::Timelike;
-use commands::{application, tracker, auto_check, event, reminder, ai, sidecar, settings, email, push_log};
+use commands::{application, tracker, auto_check, event, reminder, ai, sidecar, settings, email, push_log, backup};
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -282,6 +282,8 @@ pub fn run() {
             email::send_daily_report_with_check,
             push_log::list_push_logs,
             push_log::clear_push_logs,
+            backup::export_data,
+            backup::export_data_to_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

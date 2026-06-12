@@ -1,13 +1,16 @@
 import { useState, useRef } from "react";
 import { Download, Upload } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
 import type { Application, ApplicationEvent, Reminder, TrackingTarget } from "@applyradar/shared";
-import { applicationService, trackerService, reminderService, eventService } from "../services";
+import { applicationService, trackerService, reminderService, eventService, backupService } from "../services";
 
 interface BackupData {
-  version: number;
+  version: number | string;
   exportedAt?: string;
+  exported_at?: string;
   applications?: Application[];
   trackingTargets?: TrackingTarget[];
+  tracking_targets?: TrackingTarget[];
   reminders?: Reminder[];
   events?: ApplicationEvent[];
 }
@@ -48,22 +51,15 @@ export default function DataBackupSection() {
 
   const handleExport = async () => {
     try {
-      const apps = await applicationService.listApplications();
-      const [targets, reminders, events] = await Promise.all([
-        trackerService.listTrackingTargets(),
-        reminderService.listReminders(undefined, true),
-        Promise.all(apps.map(a => eventService.listEventsByApplication(a.id))).then(arrays => arrays.flat()),
-      ]);
-      const data = { version: 1, exportedAt: new Date().toISOString(), applications: apps, trackingTargets: targets, reminders, events };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `applyradar-backup-${new Date().toISOString().split("T")[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setResult({ ok: true, msg: "数据已导出" });
-      setTimeout(() => setResult(null), 3000);
+      const defaultFilename = `applyradar-backup-${new Date().toISOString().split("T")[0]}.json`;
+      const filePath = await save({
+        defaultPath: defaultFilename,
+        filters: [{ name: "JSON", extensions: ["json"] }],
+      });
+      if (!filePath) return;
+      await backupService.exportDataToFile(filePath);
+      setResult({ ok: true, msg: `已导出到: ${filePath}` });
+      setTimeout(() => setResult(null), 5000);
     } catch (e) {
       setResult({ ok: false, msg: `导出失败: ${e instanceof Error ? e.message : String(e)}` });
     }
@@ -94,6 +90,9 @@ export default function DataBackupSection() {
       const existingEventKeys = new Set(existingEvents.map((event) => eventImportKey(event.application_id, event)));
       let appCount = 0, targetCount = 0, reminderCount = 0, eventCount = 0, skippedCount = 0, failedCount = 0;
 
+      // Support both snake_case (server-consistent) and camelCase (legacy) formats
+      const trackingTargetsList = data.tracking_targets || data.trackingTargets || [];
+
       for (const app of data.applications) {
         try {
           const companyName = optionalText(app.company_name);
@@ -110,7 +109,7 @@ export default function DataBackupSection() {
         } catch (e) { console.error("Failed to import app:", e); failedCount++; }
       }
 
-      for (const target of data.trackingTargets || []) {
+      for (const target of trackingTargetsList) {
         try {
           const applicationId = appIdMap.get(target.application_id);
           const statusUrl = optionalHttpUrl(target.status_url);

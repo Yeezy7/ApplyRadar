@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { escapeHtml } from '../validate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -90,7 +91,7 @@ app.post('/daily-report', async (c) => {
       <div style="margin: 20px 0;">
         <h3>⏰ 待处理提醒</h3>
         <ul>
-          ${reminders.map(r => `<li><strong>${r.title}</strong> - ${new Date(r.remind_at).toLocaleString('zh-CN')}</li>`).join('')}
+          ${reminders.map(r => `<li><strong>${escapeHtml(r.title)}</strong> - ${new Date(r.remind_at).toLocaleString('zh-CN')}</li>`).join('')}
         </ul>
       </div>
       ` : ''}
@@ -99,7 +100,7 @@ app.post('/daily-report', async (c) => {
       <div style="margin: 20px 0;">
         <h3>📝 最近动态</h3>
         <ul>
-          ${recentEvents.map(e => `<li>${e.title} - ${new Date(e.event_time).toLocaleString('zh-CN')}</li>`).join('')}
+          ${recentEvents.map(e => `<li>${escapeHtml(e.title)} - ${new Date(e.event_time).toLocaleString('zh-CN')}</li>`).join('')}
         </ul>
       </div>
       ` : ''}

@@ -2,8 +2,15 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { validateBody, settingsSchema } from '../validate.js';
 
 const app = new Hono<AppEnv>();
+
+// 脱敏处理
+function maskSensitive(value: string): string {
+  if (!value || value.length <= 4) return '****';
+  return '****' + value.slice(-4);
+}
 
 // Get settings
 app.get('/', (c) => {
@@ -17,15 +24,30 @@ app.get('/', (c) => {
     settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
   }
 
-  return c.json({ code: 0, data: settings });
+  // 敏感信息脱敏
+  const maskedSettings = {
+    ...settings,
+    api_key: settings.api_key ? maskSensitive(settings.api_key) : '',
+    smtp_password: settings.smtp_password ? maskSensitive(settings.smtp_password) : '',
+  };
+
+  return c.json({ code: 0, data: maskedSettings });
 });
 
 // Save settings
-app.put('/', async (c) => {
+app.put('/', validateBody(settingsSchema), async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const body = c.get('validatedBody');
 
   const existing = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
+
+  // 如果前端传来的值是脱敏的（****），则保留原值
+  const getOriginalValue = (field: string, newValue: string | undefined) => {
+    if (!newValue || newValue.startsWith('****')) {
+      return existing ? (existing as any)[field] : '';
+    }
+    return newValue;
+  };
 
   if (!existing) {
     const id = generateId();
@@ -60,13 +82,18 @@ app.put('/', async (c) => {
     ];
 
     for (const field of allowedFields) {
-      if (body[field] !== undefined) {
+      if ((body as any)[field] !== undefined) {
         if (field === 'notifications_enabled' || field === 'auto_check_enabled' || field === 'email_report_enabled') {
           fields.push(`${field} = ?`);
-          params.push(body[field] ? 1 : 0);
+          params.push((body as any)[field] ? 1 : 0);
+        } else if (field === 'api_key' || field === 'smtp_password') {
+          // 处理敏感字段：如果是脱敏值则保留原值
+          const value = getOriginalValue(field, (body as any)[field]);
+          fields.push(`${field} = ?`);
+          params.push(value);
         } else {
           fields.push(`${field} = ?`);
-          params.push(body[field]);
+          params.push((body as any)[field]);
         }
       }
     }
@@ -81,8 +108,14 @@ app.put('/', async (c) => {
     }
   }
 
-  const updated = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
-  return c.json({ code: 0, data: updated });
+  const updated = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
+  // 返回时脱敏
+  const maskedUpdated = {
+    ...updated,
+    api_key: updated.api_key ? maskSensitive(updated.api_key) : '',
+    smtp_password: updated.smtp_password ? maskSensitive(updated.smtp_password) : '',
+  };
+  return c.json({ code: 0, data: maskedUpdated });
 });
 
 export default app;

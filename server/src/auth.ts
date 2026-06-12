@@ -4,15 +4,20 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import db from './db.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'applyradar-dev-secret-change-in-production';
+// JWT_SECRET 必须通过环境变量设置
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required');
+  process.exit(1);
+}
 
 export function generateToken(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ userId }, JWT_SECRET!, { expiresIn: '30d' });
 }
 
 export function verifyToken(token: string): { userId: string } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as { userId: string };
+    return jwt.verify(token, JWT_SECRET!) as { userId: string };
   } catch {
     return null;
   }
