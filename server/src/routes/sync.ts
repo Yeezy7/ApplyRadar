@@ -157,7 +157,7 @@ app.post('/push', async (c) => {
 
   // 同步设置
   if (settings) {
-    const existing = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
+    const existing = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
 
     if (!existing) {
       const id = generateId();
