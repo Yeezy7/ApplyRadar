@@ -74,4 +74,17 @@ app.get('/stats', (c) => {
   });
 });
 
+// Clear all push logs
+app.delete('/clear', (c) => {
+  const userId = c.get('userId');
+
+  const result = db.prepare('DELETE FROM push_logs WHERE user_id = ?').run(userId);
+
+  return c.json({
+    code: 0,
+    data: { deleted: result.changes },
+    msg: `已清空 ${result.changes} 条推送记录`,
+  });
+});
+
 export default app;

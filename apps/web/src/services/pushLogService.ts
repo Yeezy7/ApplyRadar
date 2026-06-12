@@ -35,3 +35,7 @@ export async function createPushLog(
 export async function getPushLogStats(): Promise<PushLogStats> {
   return api.get<PushLogStats>("/api/push-logs/stats");
 }
+
+export async function clearPushLogs(): Promise<{ deleted: number }> {
+  return api.delete<{ deleted: number }>("/api/push-logs/clear");
+}

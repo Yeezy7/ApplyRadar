@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { isAuthenticated, logout } from "./stores/authStore";
+import { setUnauthorizedHandler } from "./lib/api";
 import { useHashRouter } from "./hooks/useHashRouter";
 import Layout from "./components/Layout";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -35,6 +36,14 @@ export default function App() {
   );
   const [counts, setCounts] = useState({ applications: 0, reminders: 0 });
   const { page: currentPage, selectedAppId, navigate, navigateToApp, navigateBack } = useHashRouter();
+
+  // 设置 401 处理回调
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setAuthenticated(false);
+      navigate("dashboard");
+    });
+  }, [navigate]);
 
   const loadCounts = useCallback(async () => {
     try {

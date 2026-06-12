@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Send, Mail, AlertTriangle, ShieldAlert, Bell, CheckCircle2, RefreshCw, Filter, Trash2 } from "lucide-react";
-import { listPushLogs, type PushLog } from "../services/pushLogService";
+import { listPushLogs, clearPushLogs, type PushLog } from "../services/pushLogService";
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Mail; color: string; bg: string }> = {
   email: { label: "邮件", icon: Mail, color: "text-blue-600", bg: "bg-blue-50" },
@@ -35,8 +35,12 @@ export default function PushPage() {
 
   const handleClear = async () => {
     if (!window.confirm("确定要清空所有推送记录吗？")) return;
-    // TODO: 调用清空 API
-    setLogs([]);
+    try {
+      await clearPushLogs();
+      setLogs([]);
+    } catch (e) {
+      console.error("Failed to clear push logs:", e);
+    }
   };
 
   const filtered = useMemo(() => {
