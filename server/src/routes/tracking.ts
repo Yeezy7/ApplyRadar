@@ -154,10 +154,11 @@ app.get('/:id/runs', (c) => {
   return c.json({ code: 0, data: rows });
 });
 
-// Create tracking run (for manual check)
+// Create tracking run (for manual check or worker callback)
 app.post('/:id/runs', async (c) => {
   const userId = c.get('userId');
   const targetId = c.req.param('id');
+  const body = await c.req.json();
 
   // Verify target belongs to user
   const target = db.prepare('SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?').get(targetId, userId) as any;
@@ -174,14 +175,14 @@ app.post('/:id/runs', async (c) => {
     target_id: targetId,
     started_at: now,
     finished_at: now,
-    status: 'success',
-    raw_status: target.current_status,
-    normalized_status: target.current_status,
-    confidence: 1.0,
-    login_state: target.login_state,
-    error_message: null,
-    page_hash: null,
-    ai_used: 0,
+    status: body.status || 'success',
+    raw_status: body.raw_status || null,
+    normalized_status: body.normalized_status || null,
+    confidence: body.confidence || 0,
+    login_state: body.login_state || 'unknown',
+    error_message: body.error_message || null,
+    page_hash: body.page_hash || null,
+    ai_used: body.ai_used || 0,
     created_at: now,
   };
 
@@ -190,10 +191,31 @@ app.post('/:id/runs', async (c) => {
      VALUES (@id, @user_id, @target_id, @started_at, @finished_at, @status, @raw_status, @normalized_status, @confidence, @login_state, @error_message, @page_hash, @ai_used, @created_at)`
   ).run(run);
 
-  // Update target last_checked_at
+  // Update target with check results
+  const updates = ["last_checked_at = ?", "updated_at = datetime('now')"];
+  const params = [now];
+
+  if (body.login_state) {
+    updates.push("login_state = ?");
+    params.push(body.login_state);
+  }
+  if (body.page_hash) {
+    updates.push("last_text_hash = ?");
+    params.push(body.page_hash);
+  }
+  if (body.status === 'success' && !body.error_message) {
+    updates.push("last_success_at = ?");
+    params.push(now);
+  }
+  if (body.error_message) {
+    updates.push("last_error = ?");
+    params.push(body.error_message);
+  }
+
+  params.push(targetId);
   db.prepare(
-    "UPDATE tracking_targets SET last_checked_at = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(now, targetId);
+    `UPDATE tracking_targets SET ${updates.join(', ')} WHERE id = ?`
+  ).run(...params);
 
   return c.json({ code: 0, data: run }, 201);
 });

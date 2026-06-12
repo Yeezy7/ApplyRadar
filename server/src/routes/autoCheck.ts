@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { addCheckJob, addBatchCheckJobs } from '../queue.js';
 
 const app = new Hono<AppEnv>();
 
@@ -50,7 +51,7 @@ app.get('/status', (c) => {
     code: 0,
     data: {
       enabled: !!settings.auto_check_enabled,
-      isRunning: false, // TODO: 实际运行状态
+      isRunning: false,
       lastRunAt: lastRun?.created_at || null,
       nextRunAt,
       lastResult: lastRun?.body || null,
@@ -58,9 +59,10 @@ app.get('/status', (c) => {
   });
 });
 
-// 手动触发自动检查
+// 手动触发自动检查（通过队列）
 app.post('/run', async (c) => {
   const userId = c.get('userId');
+  const token = c.req.header('Authorization')?.replace('Bearer ', '') || '';
 
   // 获取所有启用的追踪目标
   const targets = db.prepare(
@@ -76,55 +78,59 @@ app.post('/run', async (c) => {
         failed: 0,
         statusChanges: 0,
         loginIssues: 0,
+        queued: 0,
       },
     });
   }
 
-  let success = 0;
-  let failed = 0;
-  let statusChanges = 0;
-  let loginIssues = 0;
-
-  // 逐个检查
-  for (const target of targets) {
-    try {
-      const runId = generateId();
-      const now = new Date().toISOString();
-
-      // 创建检查记录
-      db.prepare(
-        `INSERT INTO tracking_runs (id, user_id, target_id, started_at, finished_at, status, raw_status, normalized_status, confidence, login_state, ai_used, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(runId, userId, target.id, now, now, 'success', target.current_status, target.current_status, 1.0, target.login_state, 0, now);
-
-      // 更新目标最后检查时间
-      db.prepare(
-        "UPDATE tracking_targets SET last_checked_at = ?, updated_at = datetime('now') WHERE id = ?"
-      ).run(now, target.id);
-
-      success++;
-    } catch (e) {
-      failed++;
-    }
-  }
+  // 添加到队列
+  const queued = await addBatchCheckJobs(targets, token);
 
   // 记录推送日志
   const logId = generateId();
-  const resultMsg = `检查完成：${success} 成功，${failed} 失败`;
+  const resultMsg = `已将 ${queued} 个检查任务加入队列`;
   db.prepare(
     `INSERT INTO push_logs (id, user_id, push_type, title, body, status, created_at)
      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
-  ).run(logId, userId, 'auto_check', '自动检查', resultMsg, 'sent');
+  ).run(logId, userId, 'auto_check', '检查任务已入队', resultMsg, 'sent');
 
   return c.json({
     code: 0,
     data: {
       total: targets.length,
-      success,
-      failed,
-      statusChanges,
-      loginIssues,
+      success: 0,
+      failed: 0,
+      statusChanges: 0,
+      loginIssues: 0,
+      queued,
     },
+  });
+});
+
+// 检查单个目标（通过队列）
+app.post('/check/:targetId', async (c) => {
+  const userId = c.get('userId');
+  const targetId = c.req.param('targetId');
+  const token = c.req.header('Authorization')?.replace('Bearer ', '') || '';
+
+  const target = db.prepare(
+    'SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?'
+  ).get(targetId, userId) as any;
+
+  if (!target) {
+    return c.json({ code: 404, msg: '追踪目标不存在' }, 404);
+  }
+
+  const added = await addCheckJob(target, token);
+
+  if (!added) {
+    return c.json({ code: 500, msg: '无法添加检查任务，队列可能不可用' }, 500);
+  }
+
+  return c.json({
+    code: 0,
+    msg: '检查任务已加入队列',
+    data: { targetId, queued: true },
   });
 });
 
