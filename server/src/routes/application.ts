@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
+import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
-import type { Application } from '../types.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // List applications
 app.get('/', (c) => {
@@ -36,7 +36,7 @@ app.get('/:id', (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
 
-  const row = db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(id, userId) as Application | undefined;
+  const row = db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(id, userId) as any | undefined;
   if (!row) {
     return c.json({ code: 404, msg: '记录不存在' }, 404);
   }

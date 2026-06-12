@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { Hono } from 'hono';
+import type { AppEnv } from './types.js';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { serve } from '@hono/node-server';
@@ -18,7 +19,7 @@ import backupRoutes from './routes/backup.js';
 import emailRoutes from './routes/email.js';
 import autoCheckRoutes from './routes/autoCheck.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // Middleware
 app.use('*', cors({

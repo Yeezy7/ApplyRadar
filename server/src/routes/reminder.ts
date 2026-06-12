@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
+import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // List reminders
 app.get('/', (c) => {

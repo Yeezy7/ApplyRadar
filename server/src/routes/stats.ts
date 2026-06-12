@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
+import type { AppEnv } from '../types.js';
 import db from '../db.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 const ACTIVE_STATUSES = ['applied', 'received', 'under_review', 'assessment', 'interview', 'final_interview'];
 

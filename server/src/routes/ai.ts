@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
+import type { AppEnv } from '../types.js';
 import db from '../db.js';
 
-const app = new Hono();
+const app = new Hono<AppEnv>();
 
 // Test AI connection
 app.post('/test-connection', async (c) => {
