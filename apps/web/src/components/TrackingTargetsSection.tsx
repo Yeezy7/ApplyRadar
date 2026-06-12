@@ -3,6 +3,8 @@ import { Plus, X, Play, ShieldCheck, AlertTriangle, Clock3, Trash2, RefreshCw } 
 import type { TrackingTarget, TrackingRun, ApplicationStatus } from "@applyradar/shared";
 import { STATUS_LABELS, STATUS_COLORS, LOGIN_STATE_LABELS, LOGIN_STATE_COLORS } from "@applyradar/shared";
 import { createTrackingTarget, deleteTrackingTarget, createTrackingRun } from "../services/trackingService";
+import ConfirmDialog from "./ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 interface Props {
   targets: TrackingTarget[];
@@ -38,6 +40,7 @@ export default function TrackingTargetsSection({ targets, runs, applicationId, o
   const [targetError, setTargetError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checking, setChecking] = useState<string | null>(null);
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
   const [checkResults, setCheckResults] = useState<Map<string, { success: boolean; message: string }>>(new Map());
 
   const handleCreate = async () => {
@@ -67,7 +70,13 @@ export default function TrackingTargetsSection({ targets, runs, applicationId, o
   };
 
   const handleDelete = async (targetId: string) => {
-    if (!window.confirm("确定要删除这个监控目标吗？")) return;
+    const confirmed = await confirm({
+      title: "删除确认",
+      message: "确定要删除这个监控目标吗？",
+      confirmText: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       await deleteTrackingTarget(targetId);
@@ -107,6 +116,16 @@ export default function TrackingTargetsSection({ targets, runs, applicationId, o
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 mb-5">
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">监控目标</h2>
         <button

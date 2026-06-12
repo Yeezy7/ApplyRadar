@@ -7,6 +7,8 @@ import {
   markReminderDone,
   deleteReminder,
 } from "../services/reminderService";
+import ConfirmDialog from "./ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 interface Props {
   reminders: Reminder[];
@@ -26,6 +28,7 @@ export default function AppReminderSection({
   const [remindAt, setRemindAt] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
 
   const isOverdue = (r: Reminder) =>
     !r.is_done && new Date(r.remind_at) < new Date();
@@ -69,7 +72,13 @@ export default function AppReminderSection({
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("确定要删除这个提醒吗？")) return;
+    const confirmed = await confirm({
+      title: "删除确认",
+      message: "确定要删除这个提醒吗？",
+      confirmText: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       await deleteReminder(id);
       onRefresh();
@@ -80,6 +89,16 @@ export default function AppReminderSection({
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-6 mb-5">
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           提醒

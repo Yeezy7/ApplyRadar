@@ -27,6 +27,10 @@ import ApplicationForm from "../components/ApplicationForm";
 import TrackingTargetsSection from "../components/TrackingTargetsSection";
 import TimelineSection from "../components/TimelineSection";
 import AppReminderSection from "../components/AppReminderSection";
+import Notice from "../components/Notice";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useNotice } from "../hooks/useNotice";
+import { useConfirm } from "../hooks/useConfirm";
 
 interface Props {
   applicationId: string;
@@ -45,10 +49,8 @@ export default function ApplicationDetailPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditForm, setShowEditForm] = useState(false);
-  const [notice, setNotice] = useState<{
-    success: boolean;
-    message: string;
-  } | null>(null);
+  const { notice, showSuccess, showError } = useNotice();
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -89,14 +91,6 @@ export default function ApplicationDetailPage({
     loadData();
   }, [loadData]);
 
-  // Notice 自动消失
-  useEffect(() => {
-    if (notice) {
-      const timer = setTimeout(() => setNotice(null), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [notice]);
-
   const loadRuns = async (targetId: string) => {
     try {
       const r = await listTrackingRuns(targetId);
@@ -109,16 +103,19 @@ export default function ApplicationDetailPage({
   };
 
   const handleDelete = async () => {
-    if (!window.confirm("确定要删除这条求职记录吗？")) return;
+    const confirmed = await confirm({
+      title: "删除确认",
+      message: "确定要删除这条求职记录吗？此操作不可撤销。",
+      confirmText: "删除",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       await deleteApplication(applicationId);
       onBack();
     } catch (e) {
-      setNotice({
-        success: false,
-        message: `删除失败: ${e instanceof Error ? e.message : String(e)}`,
-      });
+      showError(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -136,14 +133,11 @@ export default function ApplicationDetailPage({
         new_status: newStatus,
       });
       setApp((prev) => (prev ? { ...prev, status: newStatus } : prev));
-      setNotice({ success: true, message: "状态已更新" });
+      showSuccess("状态已更新");
       const eventsData = await listEvents(applicationId);
       setEvents(eventsData);
     } catch (e) {
-      setNotice({
-        success: false,
-        message: `更新失败: ${e instanceof Error ? e.message : String(e)}`,
-      });
+      showError(`更新失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -213,16 +207,22 @@ export default function ApplicationDetailPage({
       </div>
 
       {notice && (
-        <div
-          className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
-            notice.success
-              ? "border-emerald-100 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
-              : "border-red-100 dark:border-red-900 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400"
-          }`}
-        >
-          {notice.message}
-        </div>
+        <Notice
+          success={notice.success}
+          message={notice.message}
+          onClose={() => {}}
+        />
       )}
+
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
 
       {/* App Info */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-6 mb-5">

@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Send, Mail, AlertTriangle, ShieldAlert, Bell, CheckCircle2, RefreshCw, Filter, Trash2 } from "lucide-react";
 import { listPushLogs, clearPushLogs, type PushLog } from "../services/pushLogService";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useConfirm } from "../hooks/useConfirm";
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Mail; color: string; bg: string }> = {
   email: { label: "邮件", icon: Mail, color: "text-blue-600", bg: "bg-blue-50" },
@@ -16,6 +18,7 @@ export default function PushPage() {
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const { isOpen, options, confirm, handleConfirm, handleCancel } = useConfirm();
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -34,7 +37,13 @@ export default function PushPage() {
   }, [loadLogs]);
 
   const handleClear = async () => {
-    if (!window.confirm("确定要清空所有推送记录吗？")) return;
+    const confirmed = await confirm({
+      title: "清空确认",
+      message: "确定要清空所有推送记录吗？此操作不可撤销。",
+      confirmText: "清空",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       await clearPushLogs();
       setLogs([]);
@@ -75,6 +84,16 @@ export default function PushPage() {
 
   return (
     <div className="px-4 pb-4 pt-2">
+      <ConfirmDialog
+        open={isOpen}
+        title={options.title}
+        message={options.message}
+        confirmText={options.confirmText}
+        variant={options.variant}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+
       {/* Header */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
