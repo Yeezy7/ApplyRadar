@@ -158,7 +158,16 @@ app.get('/:id/runs', (c) => {
 app.post('/:id/runs', async (c) => {
   const userId = c.get('userId');
   const targetId = c.req.param('id');
-  const body = await c.req.json();
+
+  let body: any = {};
+  try {
+    const text = await c.req.text();
+    if (text) {
+      body = JSON.parse(text);
+    }
+  } catch {
+    body = {};
+  }
 
   // Verify target belongs to user
   const target = db.prepare('SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?').get(targetId, userId) as any;
