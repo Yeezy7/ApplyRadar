@@ -1,0 +1,100 @@
+<view class="container page-with-tabbar">
+  <!-- Search -->
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <input
+        class="search-input"
+        placeholder="搜索公司、岗位..."
+        value="{{search}}"
+        bindinput="onSearchInput"
+      />
+    </view>
+    <button class="btn-primary new-btn" bind:tap="goToCreate">+ 新建</button>
+  </view>
+
+  <!-- Loading -->
+  <view wx:if="{{loading && !initialLoaded}}" class="loading-wrap">
+    <view class="skeleton skeleton-col" wx:for="{{5}}" wx:key="index"></view>
+  </view>
+
+  <!-- Empty -->
+  <empty-state
+    wx:elif="{{applications.length === 0}}"
+    icon="看"
+    title="暂无求职记录"
+    description="点击「新建」添加求职记录"
+  />
+
+  <!-- Kanban Board -->
+  <scroll-view wx:else scroll-x class="kanban-scroll">
+    <view class="kanban-board">
+      <view
+        class="kanban-column"
+        wx:for="{{columns}}"
+        wx:key="id"
+      >
+        <!-- Column Header -->
+        <view class="column-header">
+          <view class="column-label" style="background: {{item.bgColor}}; color: {{item.color}}">
+            {{item.label}}
+          </view>
+          <text class="column-count">{{item.apps.length}}</text>
+        </view>
+
+        <!-- Cards -->
+        <view class="column-cards">
+          <view
+            class="kanban-card"
+            wx:for="{{item.apps}}"
+            wx:for-item="app"
+            wx:key="_id"
+            bind:tap="goToDetail"
+            data-id="{{app._id}}"
+            bind:longpress="onCardLongPress"
+            data-app-id="{{app._id}}"
+            data-current-status="{{app.status}}"
+          >
+            <view class="card-top">
+              <view class="card-avatar">{{app.initial}}</view>
+              <view class="card-info">
+                <text class="card-company">{{app.company_name}}</text>
+                <text class="card-location" wx:if="{{app.location}}">{{app.location}}</text>
+              </view>
+            </view>
+            <text class="card-job">{{app.job_title}}</text>
+            <view class="card-bottom">
+              <view class="card-tags">
+                <text class="tag tag-priority" wx:if="{{app.priority === 'high'}}">高优</text>
+                <text class="tag tag-days" wx:if="{{app.waitingDays > 7}}">{{app.waitingDays}}天</text>
+                <text class="tag tag-salary" wx:if="{{app.salary_range}}">{{app.salary_range}}</text>
+              </view>
+              <text class="card-date" wx:if="{{app.dateStr}}">{{app.dateStr}}</text>
+            </view>
+          </view>
+
+          <view class="column-empty" wx:if="{{item.apps.length === 0}}">
+            <text class="column-empty-text">暂无记录</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
+
+<!-- Status Change Action Sheet -->
+<view class="action-sheet-mask" wx:if="{{showStatusSheet}}" bind:tap="closeStatusSheet">
+  <view class="action-sheet" catch:tap>
+    <view class="action-sheet-title">移动到</view>
+    <view
+      class="action-sheet-item"
+      wx:for="{{statusOptions}}"
+      wx:key="value"
+      bind:tap="moveToStatus"
+      data-status="{{item.value}}"
+    >
+      {{item.label}}
+    </view>
+    <view class="action-sheet-cancel" bind:tap="closeStatusSheet">取消</view>
+  </view>
+</view>
+<custom-tabbar id="tabbar" />

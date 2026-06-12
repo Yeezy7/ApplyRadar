@@ -1,0 +1,138 @@
+/* Theme variables and common styles */
+
+/* Status colors */
+.status-to_apply { background: #f5f5f4; color: #57534e; }
+.status-applied { background: #eff6ff; color: #2563eb; }
+.status-received { background: #eff6ff; color: #1d4ed8; }
+.status-under_review { background: #fefce8; color: #a16207; }
+.status-assessment { background: #faf5ff; color: #7c3aed; }
+.status-interview { background: #f0fdf4; color: #15803d; }
+.status-final_interview { background: #ecfdf5; color: #047857; }
+.status-offer { background: #ecfdf5; color: #059669; }
+.status-rejected { background: #fef2f2; color: #dc2626; }
+.status-withdrawn { background: #f5f5f4; color: #78716c; }
+.status-unknown { background: #f5f5f4; color: #a8a29e; }
+
+/* Priority colors */
+.priority-high { background: #fef2f2; color: #dc2626; }
+.priority-medium { background: #fefce8; color: #ca8a04; }
+.priority-low { background: #f5f5f4; color: #78716c; }
+
+/* Reminder type colors */
+.reminder-interview { background: #f0efed; color: #57534e; }
+.reminder-assessment_deadline { background: #faf5ff; color: #7e22ce; }
+.reminder-offer_deadline { background: #ecfdf5; color: #059669; }
+.reminder-follow_up { background: #eff6ff; color: #2563eb; }
+.reminder-document_required { background: #fefce8; color: #ca8a04; }
+.reminder-custom { background: #f5f5f4; color: #78716c; }
+
+/* Gradient backgrounds for stat cards */
+.gradient-total { background: linear-gradient(135deg, #57534e, #1c1917); }
+.gradient-active { background: linear-gradient(135deg, #10b981, #0d9488); }
+.gradient-week { background: linear-gradient(135deg, #3b82f6, #06b6d4); }
+.gradient-pending { background: linear-gradient(135deg, #f59e0b, #ea580c); }
+
+/* Button styles */
+.btn-primary {
+  background: #1c1917;
+  color: #ffffff;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  padding: 20rpx 32rpx;
+  text-align: center;
+  border: none;
+}
+
+.btn-primary::after {
+  border: none;
+}
+
+.btn-secondary {
+  background: #ffffff;
+  color: #44403c;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+  padding: 20rpx 32rpx;
+  text-align: center;
+}
+
+.btn-secondary::after {
+  border: none;
+}
+
+/* Input styles */
+.input-field {
+  background: #f5f5f4;
+  border: 1rpx solid #e7e5e4;
+  border-radius: 16rpx;
+  padding: 20rpx 28rpx;
+  font-size: 28rpx;
+  color: #1c1917;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input-field-focus {
+  border-color: #a8a29e;
+  background: #ffffff;
+}
+
+/* Badge */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 22rpx;
+  font-weight: 500;
+}
+
+/* === Dark Mode === */
+@media (prefers-color-scheme: dark) {
+  .status-to_apply { background: #292524; color: #a8a29e; }
+  .status-applied { background: #1e3a5f; color: #60a5fa; }
+  .status-received { background: #1e3a5f; color: #3b82f6; }
+  .status-under_review { background: #422006; color: #fbbf24; }
+  .status-assessment { background: #3b0764; color: #a78bfa; }
+  .status-interview { background: #052e16; color: #4ade80; }
+  .status-final_interview { background: #022c22; color: #34d399; }
+  .status-offer { background: #022c22; color: #10b981; }
+  .status-rejected { background: #450a0a; color: #f87171; }
+  .status-withdrawn { background: #292524; color: #78716c; }
+  .status-unknown { background: #292524; color: #57534e; }
+
+  .priority-high { background: #450a0a; color: #f87171; }
+  .priority-medium { background: #422006; color: #fbbf24; }
+  .priority-low { background: #292524; color: #78716c; }
+
+  .reminder-interview { background: #292524; color: #a8a29e; }
+  .reminder-assessment_deadline { background: #3b0764; color: #c084fc; }
+  .reminder-offer_deadline { background: #022c22; color: #10b981; }
+  .reminder-follow_up { background: #1e3a5f; color: #60a5fa; }
+  .reminder-document_required { background: #422006; color: #fbbf24; }
+  .reminder-custom { background: #292524; color: #78716c; }
+
+  .btn-primary {
+    background: #fafaf9;
+    color: #1c1917;
+  }
+
+  .btn-secondary {
+    background: #292524;
+    color: #d6d3d1;
+    border-color: #44403c;
+  }
+
+  .input-field {
+    background: #1c1917;
+    border-color: #44403c;
+    color: #fafaf9;
+  }
+
+  .input-field-focus {
+    background: #292524;
+  }
+}

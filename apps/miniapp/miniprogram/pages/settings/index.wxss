@@ -1,0 +1,190 @@
+@import '../../styles/theme.wxss';
+
+.section {
+  padding: 32rpx;
+  margin-bottom: 24rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1c1917;
+  margin-bottom: 28rpx;
+}
+
+.form-group {
+  margin-bottom: 28rpx;
+  position: relative;
+}
+
+.form-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #78716c;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.form-hint {
+  font-size: 22rpx;
+  color: #a8a29e;
+  margin-top: 8rpx;
+  display: block;
+}
+
+.toggle-visibility {
+  position: absolute;
+  right: 24rpx;
+  top: 64rpx;
+  font-size: 22rpx;
+  color: #3b82f6;
+}
+
+.picker-field {
+  display: flex;
+  align-items: center;
+}
+
+.test-btn {
+  width: 100%;
+  height: 72rpx;
+  line-height: 72rpx;
+  margin-top: 8rpx;
+}
+
+.test-result {
+  font-size: 24rpx;
+  margin-top: 12rpx;
+  display: block;
+}
+
+.result-ok {
+  color: #059669;
+}
+
+.result-error {
+  color: #dc2626;
+}
+
+/* Toggle Row */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 0;
+}
+
+.toggle-info {
+  flex: 1;
+}
+
+.toggle-label {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1c1917;
+  display: block;
+}
+
+.toggle-desc {
+  font-size: 22rpx;
+  color: #a8a29e;
+  margin-top: 4rpx;
+  display: block;
+}
+
+/* Data Management */
+.data-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.data-action-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid #f5f5f4;
+}
+
+.data-action-item:last-child {
+  border-bottom: none;
+}
+
+.data-action-item:active {
+  background: #fafaf9;
+}
+
+.data-action-info {
+  flex: 1;
+}
+
+.data-action-label {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: #1c1917;
+  display: block;
+}
+
+.data-danger {
+  color: #dc2626;
+}
+
+.data-action-desc {
+  font-size: 22rpx;
+  color: #a8a29e;
+  margin-top: 4rpx;
+  display: block;
+}
+
+.data-action-arrow {
+  font-size: 36rpx;
+  color: #d6d3d1;
+  margin-left: 16rpx;
+}
+
+/* About */
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.about-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #1c1917;
+}
+
+.about-version {
+  font-size: 24rpx;
+  color: #78716c;
+}
+
+.about-desc {
+  font-size: 24rpx;
+  color: #a8a29e;
+}
+
+/* Save */
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-top: 8rpx;
+}
+
+.save-btn {
+  flex: 1;
+  height: 80rpx;
+  line-height: 80rpx;
+}
+
+.save-hint {
+  font-size: 24rpx;
+  color: #a8a29e;
+}
+
+.save-ok {
+  font-size: 24rpx;
+  color: #059669;
+}

@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "仪表盘",
+  "usingComponents": {
+    "stat-card": "../../components/stat-card/index",
+    "app-card": "../../components/app-card/index",
+    "empty-state": "../../components/empty-state/index",
+    "custom-tabbar": "../../components/custom-tabbar/index"
+  }
+}

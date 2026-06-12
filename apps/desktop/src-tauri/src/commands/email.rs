@@ -10,7 +10,7 @@ use tauri::State;
 use crate::AppState;
 use super::settings;
 use super::push_log;
-use super::tracker;
+use super::auto_check;
 
 #[derive(Debug, Deserialize)]
 pub struct SmtpConfig {
@@ -369,9 +369,9 @@ pub async fn send_daily_report_with_check(
 
     // First run auto-check on all enabled targets
     let _ = push_log::insert_push_log(pool, "notification", "推送前检查", Some("开始检查全部职位"), "desktop", "success", None).await;
-    match tracker::run_auto_check_with_status(&app_handle, pool, true).await {
+    match auto_check::run_auto_check_with_status(&app_handle, pool, true).await {
         Ok(result) => {
-            let msg = tracker::format_auto_check_result(&result);
+            let msg = auto_check::format_auto_check_result(&result);
             let _ = push_log::insert_push_log(pool, "notification", "推送前检查完成", Some(&msg), "desktop", "success", None).await;
         }
         Err(e) => {

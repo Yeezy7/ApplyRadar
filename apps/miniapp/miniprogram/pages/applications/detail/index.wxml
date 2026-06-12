@@ -1,0 +1,264 @@
+<view class="container">
+  <!-- Loading -->
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <view class="skeleton" style="height: 300rpx; margin-bottom: 24rpx;"></view>
+    <view class="skeleton" style="height: 200rpx;"></view>
+  </view>
+
+  <block wx:else>
+    <!-- Create/Edit Form -->
+    <view wx:if="{{isEditing}}" class="form-section">
+      <view class="card form-card">
+        <view class="form-title">{{isCreate ? '新建投递记录' : '编辑投递记录'}}</view>
+
+        <view class="form-group">
+          <text class="form-label">公司名称 *</text>
+          <input class="input-field" value="{{form.company_name}}" bindinput="onFormInput" data-field="company_name" placeholder="请输入公司名称" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">岗位名称 *</text>
+          <input class="input-field" value="{{form.job_title}}" bindinput="onFormInput" data-field="job_title" placeholder="请输入岗位名称" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">工作地点</text>
+          <input class="input-field" value="{{form.location}}" bindinput="onFormInput" data-field="location" placeholder="例如：北京" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">薪资范围</text>
+          <input class="input-field" value="{{form.salary_range}}" bindinput="onFormInput" data-field="salary_range" placeholder="例如：25-40K" />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">投递链接</text>
+          <input class="input-field" value="{{form.job_url}}" bindinput="onFormInput" data-field="job_url" placeholder="https://..." />
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">状态页链接</text>
+          <input class="input-field" value="{{form.status_url}}" bindinput="onFormInput" data-field="status_url" placeholder="用于自动检查状态" />
+        </view>
+
+        <view class="form-row">
+          <view class="form-group form-half">
+            <text class="form-label">状态</text>
+            <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{statusPickerIndex}}" bindchange="onStatusPickerChange">
+              <view class="input-field picker-field">{{statusOptions[statusPickerIndex].label}} ▼</view>
+            </picker>
+          </view>
+          <view class="form-group form-half">
+            <text class="form-label">优先级</text>
+            <picker mode="selector" range="{{priorityOptions}}" range-key="label" value="{{priorityPickerIndex}}" bindchange="onPriorityPickerChange">
+              <view class="input-field picker-field">{{priorityOptions[priorityPickerIndex].label}} ▼</view>
+            </picker>
+          </view>
+        </view>
+
+        <view class="form-row">
+          <view class="form-group form-half">
+            <text class="form-label">来源</text>
+            <picker mode="selector" range="{{sourceOptions}}" range-key="label" value="{{sourcePickerIndex}}" bindchange="onSourcePickerChange">
+              <view class="input-field picker-field">{{sourceOptions[sourcePickerIndex].label}} ▼</view>
+            </picker>
+          </view>
+          <view class="form-group form-half">
+            <text class="form-label">投递日期</text>
+            <picker mode="date" value="{{form.applied_at}}" bindchange="onDateChange" data-field="applied_at">
+              <view class="input-field picker-field">{{form.applied_at || '选择日期'}} ▼</view>
+            </picker>
+          </view>
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">截止日期</text>
+          <picker mode="date" value="{{form.deadline_at}}" bindchange="onDateChange" data-field="deadline_at">
+            <view class="input-field picker-field">{{form.deadline_at || '选择截止日期（可选）'}} ▼</view>
+          </picker>
+        </view>
+
+        <view class="form-group">
+          <text class="form-label">备注</text>
+          <textarea class="input-field textarea-field" value="{{form.notes}}" bindinput="onFormInput" data-field="notes" placeholder="添加备注..." />
+        </view>
+
+        <view class="form-actions">
+          <button class="btn-secondary" bind:tap="cancelEdit">取消</button>
+          <button class="btn-primary" bind:tap="saveApplication" disabled="{{submitting}}">
+            {{submitting ? '保存中...' : '保存'}}
+          </button>
+        </view>
+      </view>
+    </view>
+
+    <!-- Detail View -->
+    <view wx:else>
+      <!-- Header Card -->
+      <view class="card detail-header">
+        <view class="header-top">
+          <view class="header-avatar">{{initial}}</view>
+          <view class="header-info">
+            <text class="header-company">{{application.company_name}}</text>
+            <text class="header-job">{{application.job_title}}</text>
+          </view>
+          <status-badge status="{{application.status}}" />
+        </view>
+
+        <!-- Quick Status Change -->
+        <view class="status-picker-row">
+          <text class="status-picker-label">切换状态：</text>
+          <picker mode="selector" range="{{statusOptions}}" range-key="label" value="{{currentStatusIndex}}" bindchange="onQuickStatusChange">
+            <view class="status-picker-btn">{{statusOptions[currentStatusIndex].label}} ▼</view>
+          </picker>
+        </view>
+
+        <!-- Info Grid -->
+        <view class="info-grid">
+          <view class="info-item" wx:if="{{application.location}}">
+            <text class="info-label">地点</text>
+            <text class="info-value">{{application.location}}</text>
+          </view>
+          <view class="info-item" wx:if="{{application.salary_range}}">
+            <text class="info-label">薪资</text>
+            <text class="info-value">{{application.salary_range}}</text>
+          </view>
+          <view class="info-item" wx:if="{{application.source}}">
+            <text class="info-label">来源</text>
+            <text class="info-value">{{sourceLabel}}</text>
+          </view>
+          <view class="info-item" wx:if="{{application.priority}}">
+            <text class="info-label">优先级</text>
+            <text class="info-value">{{priorityLabel}}</text>
+          </view>
+          <view class="info-item" wx:if="{{application.applied_at}}">
+            <text class="info-label">投递日期</text>
+            <text class="info-value">{{appliedDateStr}}</text>
+          </view>
+          <view class="info-item" wx:if="{{deadlineDateStr}}">
+            <text class="info-label">截止日期</text>
+            <text class="info-value {{isDeadlineSoon ? 'days-warning' : ''}}">{{deadlineDateStr}}</text>
+          </view>
+          <view class="info-item" wx:if="{{waitingDays !== null}}">
+            <text class="info-label">等待天数</text>
+            <text class="info-value {{waitingDays > 14 ? 'days-warning' : ''}}">{{waitingDays}} 天</text>
+          </view>
+        </view>
+
+        <!-- Links -->
+        <view class="links-section" wx:if="{{application.job_url || application.status_url}}">
+          <view class="link-item" wx:if="{{application.job_url}}" bind:tap="copyLink" data-url="{{application.job_url}}">
+            <text class="link-label">投递链接</text>
+            <text class="link-url">{{application.job_url}}</text>
+            <text class="link-copy">复制</text>
+          </view>
+          <view class="link-item" wx:if="{{application.status_url}}" bind:tap="copyLink" data-url="{{application.status_url}}">
+            <text class="link-label">状态页</text>
+            <text class="link-url">{{application.status_url}}</text>
+            <text class="link-copy">复制</text>
+          </view>
+        </view>
+
+        <!-- Notes -->
+        <view class="notes-section" wx:if="{{application.notes}}">
+          <text class="notes-label">备注</text>
+          <text class="notes-text">{{application.notes}}</text>
+        </view>
+
+        <!-- Actions -->
+        <view class="detail-actions">
+          <button class="action-btn" bind:tap="startEdit">编辑</button>
+          <button class="action-btn action-btn-danger" bind:tap="deleteApplication">删除</button>
+        </view>
+      </view>
+
+      <!-- Events Timeline -->
+      <view class="card section">
+        <view class="section-header">
+          <text class="section-title">事件时间线</text>
+        </view>
+
+        <empty-state
+          wx:if="{{events.length === 0}}"
+          icon="时"
+          title="暂无事件"
+          description="状态变更会自动记录"
+        />
+
+        <view class="timeline" wx:else>
+          <view class="timeline-item" wx:for="{{events}}" wx:key="_id">
+            <view class="timeline-dot {{item.dotClass}}"></view>
+            <view class="timeline-content">
+              <view class="timeline-header">
+                <text class="timeline-title">{{item.title}}</text>
+                <text class="timeline-time">{{item.timeStr}}</text>
+              </view>
+              <text class="timeline-body" wx:if="{{item.content}}">{{item.content}}</text>
+              <view class="timeline-status" wx:if="{{item.oldStatusStr || item.newStatusStr}}">
+                <text wx:if="{{item.oldStatusStr}}" class="badge status-{{item.old_status}}">{{item.oldStatusStr}}</text>
+                <text wx:if="{{item.oldStatusStr && item.newStatusStr}}" class="timeline-arrow">→</text>
+                <text wx:if="{{item.newStatusStr}}" class="badge status-{{item.new_status}}">{{item.newStatusStr}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- Reminders -->
+      <view class="card section">
+        <view class="section-header">
+          <text class="section-title">相关提醒</text>
+          <text class="section-action" bind:tap="addReminder">+ 添加</text>
+        </view>
+
+        <empty-state
+          wx:if="{{reminders.length === 0}}"
+          icon="铃"
+          title="暂无提醒"
+        />
+
+        <view class="reminder-list" wx:else>
+          <view class="reminder-item {{r.isDone ? 'reminder-done' : ''}}" wx:for="{{reminders}}" wx:key="_id">
+            <view class="reminder-check {{r.isDone ? 'checked' : ''}}" bind:tap="markReminderDone" data-id="{{r._id}}">{{r.isDone ? '✓' : ''}}</view>
+            <view class="reminder-info">
+              <text class="reminder-title {{r.isDone ? 'text-line-through' : ''}}">{{r.title}}</text>
+              <text class="reminder-time">{{r.remindAtStr}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </block>
+
+  <!-- Add Reminder Modal -->
+  <view class="modal-mask" wx:if="{{showReminderForm}}" bind:tap="closeReminderForm">
+    <view class="modal-content" catch:tap>
+      <view class="modal-header">
+        <text class="modal-title">新建提醒</text>
+        <text class="modal-close" bind:tap="closeReminderForm">×</text>
+      </view>
+      <view class="modal-body">
+        <view class="form-group">
+          <text class="form-label">提醒标题 *</text>
+          <input class="input-field" value="{{reminderForm.title}}" bindinput="onReminderInput" data-field="title" placeholder="例如：准备面试" />
+        </view>
+        <view class="form-group">
+          <text class="form-label">提醒时间 *</text>
+          <picker mode="date" value="{{reminderForm.date}}" bindchange="onReminderDateChange">
+            <view class="input-field picker-field">{{reminderForm.date || '选择日期'}} ▼</view>
+          </picker>
+        </view>
+        <view class="form-group">
+          <text class="form-label">类型</text>
+          <picker mode="selector" range="{{reminderTypeOptions}}" range-key="label" value="{{reminderTypeIndex}}" bindchange="onReminderTypeChange">
+            <view class="input-field picker-field">{{reminderTypeOptions[reminderTypeIndex].label}} ▼</view>
+          </picker>
+        </view>
+      </view>
+      <view class="modal-footer">
+        <button class="btn-secondary" bind:tap="closeReminderForm">取消</button>
+        <button class="btn-primary" bind:tap="saveReminder" disabled="{{!reminderForm.title || !reminderForm.date}}">创建</button>
+      </view>
+    </view>
+  </view>
+</view>

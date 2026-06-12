@@ -9,6 +9,13 @@ import { getActiveWaitingDays, hasFinalResult } from "../utils/applications";
 type SortField = "company_name" | "job_title" | "status" | "priority" | "applied_at" | "updated_at";
 type SortDirection = "asc" | "desc";
 
+const SortIcon = ({ field, sortField, sortDirection }: { field: SortField; sortField: SortField; sortDirection: SortDirection }) => {
+  if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-gray-300" />;
+  return sortDirection === "asc"
+    ? <ArrowUp className="w-3 h-3 text-stone-600" />
+    : <ArrowDown className="w-3 h-3 text-stone-600" />;
+};
+
 interface Props {
   onSelectApp?: (id: string) => void;
 }
@@ -16,6 +23,7 @@ interface Props {
 export default function ApplicationsPage({ onSelectApp }: Props) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
   const [editingApp, setEditingApp] = useState<Application | null>(null);
@@ -24,11 +32,17 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [notice, setNotice] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const loadApplications = useCallback(async () => {
     setLoading(true);
     try {
       const data = await applicationService.listApplications(
-        search || undefined,
+        debouncedSearch || undefined,
         statusFilter || undefined
       );
       setApplications(data);
@@ -38,7 +52,7 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter]);
+  }, [debouncedSearch, statusFilter]);
 
   useEffect(() => {
     loadApplications();
@@ -121,13 +135,6 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
     return sorted;
   }, [applications, sortField, sortDirection]);
 
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 text-gray-300" />;
-    return sortDirection === "asc"
-      ? <ArrowUp className="w-3 h-3 text-stone-600" />
-      : <ArrowDown className="w-3 h-3 text-stone-600" />;
-  };
-
   return (
     <div className="px-4 pb-4 pt-2">
       {/* Header */}
@@ -187,32 +194,32 @@ export default function ApplicationsPage({ onSelectApp }: Props) {
                 onClick={() => handleSort("company_name")}
                 className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
-                <div className="flex items-center gap-1">公司 <SortIcon field="company_name" /></div>
+                <div className="flex items-center gap-1">公司 <SortIcon field="company_name" sortField={sortField} sortDirection={sortDirection} /></div>
               </th>
               <th
                 onClick={() => handleSort("job_title")}
                 className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
-                <div className="flex items-center gap-1">岗位 <SortIcon field="job_title" /></div>
+                <div className="flex items-center gap-1">岗位 <SortIcon field="job_title" sortField={sortField} sortDirection={sortDirection} /></div>
               </th>
               <th
                 onClick={() => handleSort("status")}
                 className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
-                <div className="flex items-center gap-1">状态 <SortIcon field="status" /></div>
+                <div className="flex items-center gap-1">状态 <SortIcon field="status" sortField={sortField} sortDirection={sortDirection} /></div>
               </th>
               <th
                 onClick={() => handleSort("priority")}
                 className="hidden whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600 xl:table-cell"
               >
-                <div className="flex items-center gap-1">优先级 <SortIcon field="priority" /></div>
+                <div className="flex items-center gap-1">优先级 <SortIcon field="priority" sortField={sortField} sortDirection={sortDirection} /></div>
               </th>
               <th className="hidden whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 xl:table-cell">来源</th>
               <th
                 onClick={() => handleSort("applied_at")}
                 className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400 cursor-pointer select-none hover:text-gray-600"
               >
-                <div className="flex items-center gap-1">投递日期 <SortIcon field="applied_at" /></div>
+                <div className="flex items-center gap-1">投递日期 <SortIcon field="applied_at" sortField={sortField} sortDirection={sortDirection} /></div>
               </th>
               <th className="whitespace-nowrap px-4 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-400">等待天数</th>
               <th className="whitespace-nowrap px-4 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-gray-400">操作</th>

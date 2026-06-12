@@ -14,6 +14,31 @@ import {
   applicationService,
 } from "../services";
 
+const formatTime = (isoStr: string | null) => {
+  if (!isoStr) return "-";
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "刚刚";
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} 小时前`;
+  return d.toLocaleDateString("zh-CN");
+};
+
+const formatNextTime = (isoStr: string | null) => {
+  if (!isoStr) return "-";
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs <= 0) return "即将执行";
+  const diffMin = Math.ceil(diffMs / 60000);
+  if (diffMin < 60) return `${diffMin} 分钟后`;
+  const diffHour = Math.floor(diffMin / 60);
+  return `${diffHour} 小时后`;
+};
+
 export default function TrackerPage() {
   const [targets, setTargets] = useState<TrackingTarget[]>([]);
   const [loading, setLoading] = useState(true);
@@ -255,31 +280,6 @@ export default function TrackerPage() {
         loadTargetRuns(targetId);
       }
     }
-  };
-
-  const formatTime = (isoStr: string | null) => {
-    if (!isoStr) return "-";
-    const d = new Date(isoStr);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return "刚刚";
-    if (diffMin < 60) return `${diffMin} 分钟前`;
-    const diffHour = Math.floor(diffMin / 60);
-    if (diffHour < 24) return `${diffHour} 小时前`;
-    return d.toLocaleDateString("zh-CN");
-  };
-
-  const formatNextTime = (isoStr: string | null) => {
-    if (!isoStr) return "-";
-    const d = new Date(isoStr);
-    const now = new Date();
-    const diffMs = d.getTime() - now.getTime();
-    if (diffMs <= 0) return "即将执行";
-    const diffMin = Math.ceil(diffMs / 60000);
-    if (diffMin < 60) return `${diffMin} 分钟后`;
-    const diffHour = Math.floor(diffMin / 60);
-    return `${diffHour} 小时后`;
   };
 
   const invalidLoginTargets = targets.filter((target) =>

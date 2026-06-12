@@ -56,7 +56,10 @@ function log(msg: string) {
 
 async function killExistingChrome(profileDir: string) {
   try {
-    await execFileAsync("pkill", ["-f", "--", profileDir], { timeout: 5000 }).catch(() => {});
+    // Extract just the domain portion to avoid matching unrelated processes
+    const domain = path.basename(profileDir);
+    if (!domain || domain === "." || domain === "..") return;
+    await execFileAsync("pkill", ["-f", `--user-data-dir=.*${domain}`], { timeout: 5000 }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1000));
   } catch {
     // Ignore errors
@@ -201,16 +204,28 @@ function detectLoginState(url: string, text: string): string {
       typeof pattern === "string" ? lowerText.includes(pattern) : pattern.test(lowerText)
     );
 
+  // If the page has substantial content (job listings, delivery records, etc.),
+  // the user is likely logged in successfully. Don't flag as login issue.
+  const hasJobContent = hasAny([
+    "投递记录", "delivery record", "应聘进度",
+    "已投递", "面试", "offer", "录用",
+    "岗位", "职位", "招聘", "position",
+    "application submitted", "under review",
+  ]);
+  if (hasJobContent) {
+    return "valid";
+  }
+
+  // Only check for captcha/MFA/block if the page doesn't have job content
   if (hasAny([
     "captcha",
     "recaptcha",
     "hcaptcha",
     "verify you are human",
     "security check",
-    "验证码",
-    "人机验证",
-    "安全验证",
     "滑块验证",
+    "请完成验证",
+    "拖动滑块",
   ])) {
     return "captcha_required";
   }
@@ -221,12 +236,10 @@ function detectLoginState(url: string, text: string): string {
     "2fa",
     "mfa",
     "multi-factor",
-    "verification code",
     "authenticator",
     "二次验证",
     "两步验证",
     "多因素验证",
-    "动态验证码",
   ])) {
     return "mfa_required";
   }
@@ -619,42 +632,86 @@ async function handleOpenLogin(req: CheckRequest): Promise<CheckResponse> {
       return { success: false, error: "Missing statusUrl or profileDir" };
     }
 
+    log(`[open_login] Starting for ${statusUrl}`);
     fs.mkdirSync(profileDir, { recursive: true });
-    // Kill any existing Chrome first, then clear stale marker
-    await killExistingChrome(profileDir);
     clearLoginActive(profileDir);
     activeProfileDir = profileDir;
     markLoginActive(profileDir);
 
+    // Close existing context gracefully (no pkill - it may kill the new browser)
     if (context) {
+      log("[open_login] Closing existing context");
       await context.close().catch(() => {});
       context = null;
     }
 
+    log("[open_login] Launching browser");
     context = await chromium.launchPersistentContext(profileDir, {
       headless: false,
       viewport: { width: 1280, height: 800 },
     });
+    log("[open_login] Browser launched");
     await restoreStorageState(context, profileDir);
     keepStorageStateFresh(context, profileDir);
 
     const page = await context.newPage();
     await page.goto(statusUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
     await persistStorageState(context, profileDir);
+    log("[open_login] Page loaded, waiting for user to close browser");
 
     return new Promise<CheckResponse>((resolve) => {
       const loginMarkerTimer = setInterval(() => {
         markLoginActive(profileDir);
       }, 2000);
 
-      context!.on("close", () => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
         clearInterval(loginMarkerTimer);
         clearLoginActive(profileDir);
-        context = null;
-        resolve({
-          success: true,
-          loginState: "unknown",
+        activeProfileDir = null;
+        if (context) {
+          context.close().catch(() => {});
+          context = null;
+        }
+        log("[open_login] Resolving promise");
+        resolve({ success: true, loginState: "unknown" });
+        // Delay exit to let the response be written to stdout
+        setTimeout(() => {
+          log("[open_login] Exiting process");
+          process.exit(0);
+        }, 1000);
+      };
+
+      // Watch for all pages closing (user closes browser window)
+      context!.on("page", (p: any) => {
+        p.on("close", () => {
+          const pageCount = context?.pages().length ?? 0;
+          log(`[open_login] Page closed, remaining: ${pageCount}`);
+          if (pageCount === 0) {
+            log("[open_login] All pages closed, finishing");
+            finish();
+          }
         });
+      });
+
+      // Existing pages
+      for (const p of context!.pages()) {
+        p.on("close", () => {
+          const pageCount = context?.pages().length ?? 0;
+          log(`[open_login] Page closed, remaining: ${pageCount}`);
+          if (pageCount === 0) {
+            log("[open_login] All pages closed, finishing");
+            finish();
+          }
+        });
+      }
+
+      // Context close as fallback
+      context!.on("close", () => {
+        log("[open_login] Context close event");
+        finish();
       });
     });
   } catch (e: any) {
@@ -769,12 +826,16 @@ rl.on("line", async (line) => {
 });
 
 rl.on("close", () => {
-  log("stdin closed");
-  if (activeProfileDir) {
+  log(`[stdin] closed. activeProfileDir=${activeProfileDir}, context=${context ? "exists" : "null"}`);
+  if (activeProfileDir && context) {
+    // open_login session - don't close browser, wait for user
+    log("[stdin] open_login session, waiting for browser close");
+  } else if (activeProfileDir) {
+    log("[stdin] activeProfileDir set but no context, exiting");
     clearLoginActive(activeProfileDir);
+    process.exit(0);
+  } else {
+    log("[stdin] no activeProfileDir, exiting");
+    process.exit(0);
   }
-  if (context) {
-    context.close().catch(() => {});
-  }
-  process.exit(0);
 });

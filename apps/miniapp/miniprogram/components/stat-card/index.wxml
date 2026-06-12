@@ -1,0 +1,9 @@
+<view class="stat-card">
+  <view class="stat-header">
+    <view class="stat-label">{{label}}</view>
+    <view class="stat-icon gradient-{{gradient}}">
+      <text class="icon-text">{{iconText}}</text>
+    </view>
+  </view>
+  <view class="stat-value">{{value}}</view>
+</view>

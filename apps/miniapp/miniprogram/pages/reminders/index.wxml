@@ -1,0 +1,131 @@
+<view class="container page-with-tabbar">
+  <!-- Search & Filter -->
+  <view class="search-bar">
+    <view class="search-input-wrap">
+      <input
+        class="search-input"
+        placeholder="搜索提醒..."
+        value="{{search}}"
+        bindinput="onSearchInput"
+      />
+    </view>
+    <view class="filter-row">
+      <picker
+        mode="selector"
+        range="{{typeOptions}}"
+        range-key="label"
+        value="{{typePickerIndex}}"
+        bindchange="onTypeFilter"
+      >
+        <view class="filter-btn">
+          <text>{{typePickerIndex > 0 ? typeOptions[typePickerIndex].label : '全部类型'}}</text>
+          <text class="filter-arrow">▼</text>
+        </view>
+      </picker>
+      <view class="toggle-btn {{includeDone ? 'toggle-active' : ''}}" bind:tap="toggleIncludeDone">
+        <text>{{includeDone ? '隐藏已完成' : '显示已完成'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Create Button -->
+  <button class="btn-primary create-btn" bind:tap="openCreateForm">+ 新建提醒</button>
+
+  <!-- Loading -->
+  <view wx:if="{{loading}}" class="loading-wrap">
+    <view class="skeleton skeleton-item" wx:for="{{5}}" wx:key="index"></view>
+  </view>
+
+  <!-- Empty -->
+  <empty-state
+    wx:elif="{{filteredReminders.length === 0}}"
+    icon="铃"
+    title="{{search || typeFilter ? '没有匹配的提醒' : (includeDone ? '暂无提醒' : '暂无未完成的提醒')}}"
+    description="{{search || typeFilter ? '尝试调整筛选条件' : '点击「新建提醒」开始添加'}}"
+  />
+
+  <!-- Reminder List -->
+  <view wx:else class="reminder-list">
+    <view
+      class="reminder-item {{item.isDone ? 'reminder-done' : ''}} {{item.isOverdue ? 'reminder-overdue' : ''}}"
+      wx:for="{{filteredReminders}}"
+      wx:key="_id"
+    >
+      <!-- Check button -->
+      <view
+        class="reminder-check {{item.isDone ? 'checked' : ''}}"
+        bind:tap="markDone"
+        data-id="{{item._id}}"
+      >
+        <text wx:if="{{item.isDone}}">✓</text>
+      </view>
+
+      <!-- Content -->
+      <view class="reminder-content">
+        <view class="reminder-header">
+          <text class="reminder-title {{item.isDone ? 'text-done' : ''}}">{{item.title}}</text>
+          <view class="reminder-type badge reminder-{{item.reminder_type}}" wx:if="{{item.reminder_type}}">
+            {{item.typeLabel}}
+          </view>
+        </view>
+        <text class="reminder-desc" wx:if="{{item.content}}">{{item.content}}</text>
+        <text class="reminder-app" wx:if="{{item.appName}}">{{item.appName}}</text>
+      </view>
+
+      <!-- Right side -->
+      <view class="reminder-right">
+        <text class="reminder-time {{item.isOverdue ? 'time-overdue' : ''}}">{{item.remindAtStr}}</text>
+        <view class="reminder-overdue-tag" wx:if="{{item.isOverdue}}">已过期</view>
+        <view class="reminder-actions">
+          <text class="action-link" bind:tap="openEditForm" data-reminder="{{item}}">编辑</text>
+          <text class="action-link action-danger" bind:tap="deleteReminder" data-id="{{item._id}}">删除</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+
+<!-- Create/Edit Modal -->
+<view class="modal-mask" wx:if="{{showForm}}" bind:tap="closeForm">
+  <view class="modal-content" catch:tap>
+    <view class="modal-header">
+      <text class="modal-title">{{editingId ? '编辑提醒' : '新建提醒'}}</text>
+      <text class="modal-close" bind:tap="closeForm">×</text>
+    </view>
+    <view class="modal-body">
+      <view class="form-group">
+        <text class="form-label">提醒标题 *</text>
+        <input class="input-field" value="{{formTitle}}" bindinput="onFormTitleInput" placeholder="例如：准备面试" />
+      </view>
+      <view class="form-group">
+        <text class="form-label">提醒时间 *</text>
+        <picker mode="date" value="{{formDate}}" bindchange="onFormDateChange">
+          <view class="input-field picker-field">{{formDate || '选择日期'}} ▼</view>
+        </picker>
+      </view>
+      <view class="form-group">
+        <text class="form-label">类型</text>
+        <picker mode="selector" range="{{typeOptions}}" range-key="label" value="{{formTypeIndex}}" bindchange="onFormTypeChange">
+          <view class="input-field picker-field">{{typeOptions[formTypeIndex].label}} ▼</view>
+        </picker>
+      </view>
+      <view class="form-group">
+        <text class="form-label">关联求职</text>
+        <picker mode="selector" range="{{appOptions}}" range-key="label" value="{{formAppIndex}}" bindchange="onFormAppChange">
+          <view class="input-field picker-field">{{formAppIndex > 0 ? appOptions[formAppIndex].label : '不关联'}} ▼</view>
+        </picker>
+      </view>
+      <view class="form-group">
+        <text class="form-label">备注</text>
+        <textarea class="input-field textarea-field" value="{{formContent}}" bindinput="onFormContentInput" placeholder="添加备注..." />
+      </view>
+    </view>
+    <view class="modal-footer">
+      <button class="btn-secondary" bind:tap="closeForm">取消</button>
+      <button class="btn-primary" bind:tap="saveReminder" disabled="{{!formTitle || !formDate || submitting}}">
+        {{submitting ? '保存中...' : (editingId ? '保存' : '创建')}}
+      </button>
+    </view>
+  </view>
+</view>
+<custom-tabbar id="tabbar" />

@@ -104,6 +104,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const unlisteners: Array<() => void> = [];
 
     listen<AutoCheckNotifyPayload>("auto-check:notify", (event) => {
@@ -111,6 +112,7 @@ export default function App() {
       if (!payload?.title || !payload?.body) return;
       void notificationService.notify(payload.title, payload.body);
     }).then((fn) => {
+      if (cancelled) { fn(); return; }
       unlisteners.push(fn);
     }).catch((e) => {
       console.error("Failed to listen auto-check notifications:", e);
@@ -121,12 +123,14 @@ export default function App() {
       if (!payload?.title || !payload?.body) return;
       void notificationService.notify(payload.title, payload.body);
     }).then((fn) => {
+      if (cancelled) { fn(); return; }
       unlisteners.push(fn);
     }).catch((e) => {
       console.error("Failed to listen reminder notifications:", e);
     });
 
     return () => {
+      cancelled = true;
       for (const unlisten of unlisteners) {
         unlisten();
       }
@@ -152,7 +156,10 @@ export default function App() {
 
   useEffect(() => {
     loadCounts();
-  }, [page]);
+    // Refresh counts every 60 seconds instead of on every page change
+    const timer = setInterval(loadCounts, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!isResizingSidebar) return;
@@ -218,18 +225,18 @@ export default function App() {
         />
 
         {/* Traffic light area */}
-        <div className="flex h-[36px] shrink-0 items-start pl-[70px] pt-[14px]">
+        <div className="flex h-[36px] shrink-0 items-start pl-[100px] pt-[7px]">
           <button
             onClick={() => {
               const w = compact ? DEFAULT_SIDEBAR_WIDTH : MIN_SIDEBAR_WIDTH;
               setSidebarWidth(w);
               try { localStorage.setItem("sidebarWidth", String(w)); } catch {}
             }}
-            className="relative z-20 flex h-[18px] w-[18px] items-center justify-center rounded-md text-stone-400 hover:bg-stone-300/60 hover:text-stone-600"
+            className="relative z-20 flex h-[20px] w-[20px] items-center justify-center rounded-md text-stone-400 hover:bg-stone-300/60 hover:text-stone-600"
             aria-label={compact ? "展开侧边栏" : "收起侧边栏"}
           >
             <ChevronsLeft
-              className={`h-3 w-3 transition-transform duration-200 ${compact ? "rotate-180" : ""}`}
+              className={`h-7 w-7 transition-transform duration-200 ${compact ? "rotate-180" : ""}`}
             />
           </button>
         </div>

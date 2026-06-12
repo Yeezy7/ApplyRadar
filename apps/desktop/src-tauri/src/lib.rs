@@ -2,7 +2,7 @@ mod db;
 mod commands;
 
 use chrono::Timelike;
-use commands::{application, tracker, event, reminder, ai, sidecar, settings, email, push_log};
+use commands::{application, tracker, auto_check, event, reminder, ai, sidecar, settings, email, push_log};
 use sqlx::SqlitePool;
 use tauri::{Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -136,8 +136,8 @@ pub fn run() {
 
                     println!("[auto_check] Running auto check");
 
-                    match tracker::run_auto_check_with_status(&app_handle, &db, false).await {
-                        Ok(result) => println!("[auto_check] {}", tracker::format_auto_check_result(&result)),
+                    match auto_check::run_auto_check_with_status(&app_handle, &db, false).await {
+                        Ok(result) => println!("[auto_check] {}", auto_check::format_auto_check_result(&result)),
                         Err(e) => println!("[auto_check] Error: {}", e),
                     }
                 }
@@ -272,11 +272,11 @@ pub fn run() {
             settings::get_settings,
             settings::save_settings,
             settings::is_ai_configured,
-            tracker::run_auto_check,
-            tracker::get_auto_check_status,
-            tracker::reset_auto_check,
-            tracker::run_tracking_target_check,
-            tracker::run_tracking_targets_check,
+            auto_check::run_auto_check,
+            auto_check::get_auto_check_status,
+            auto_check::reset_auto_check,
+            auto_check::run_tracking_target_check,
+            auto_check::run_tracking_targets_check,
             email::test_email_config,
             email::send_daily_report,
             email::send_daily_report_with_check,

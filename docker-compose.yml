@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  applyradar-server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/server/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DB_PATH=/app/server/data/applyradar.db
+      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-random-secret}
+      - WECHAT_APPID=${WECHAT_APPID:-}
+      - WECHAT_APPSECRET=${WECHAT_APPSECRET:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

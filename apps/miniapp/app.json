@@ -1,0 +1,49 @@
+{
+  "pages": [
+    "pages/dashboard/index",
+    "pages/applications/index",
+    "pages/applications/detail/index",
+    "pages/kanban/index",
+    "pages/reminders/index",
+    "pages/settings/index"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#1c1917",
+    "navigationBarTitleText": "投递雷达",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#f5f5f4",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#a8a29e",
+    "selectedColor": "#1c1917",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/dashboard/index",
+        "text": "仪表盘"
+      },
+      {
+        "pagePath": "pages/applications/index",
+        "text": "投递"
+      },
+      {
+        "pagePath": "pages/kanban/index",
+        "text": "看板"
+      },
+      {
+        "pagePath": "pages/reminders/index",
+        "text": "提醒"
+      },
+      {
+        "pagePath": "pages/settings/index",
+        "text": "设置"
+      }
+    ]
+  },
+  "cloud": true,
+  "sitemapLocation": "sitemap.json",
+  "style": "v2"
+}

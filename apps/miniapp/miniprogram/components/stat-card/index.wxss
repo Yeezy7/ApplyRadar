@@ -1,0 +1,43 @@
+@import '../../styles/theme.wxss';
+
+.stat-card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  border: 1rpx solid #f0efed;
+  padding: 32rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.stat-label {
+  font-size: 26rpx;
+  color: #78716c;
+  margin-bottom: 8rpx;
+}
+
+.stat-icon {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-text {
+  font-size: 36rpx;
+  color: #ffffff;
+}
+
+.stat-value {
+  font-size: 56rpx;
+  font-weight: 700;
+  color: #1c1917;
+  margin-top: 8rpx;
+}
