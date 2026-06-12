@@ -32,7 +32,11 @@ interface StatusBreakdown {
   count: number;
 }
 
-export default function DashboardPage() {
+interface DashboardPageProps {
+  onNavigate?: (page: string, params?: Record<string, string>) => void;
+}
+
+export default function DashboardPage(_props: DashboardPageProps) {
   const [stats, setStats] = useState<Stats>({
     total: 0,
     active: 0,

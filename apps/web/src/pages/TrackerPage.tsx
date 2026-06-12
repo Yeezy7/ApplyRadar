@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState, useCallback } from "react";
-import { Play, RefreshCw, AlertTriangle, ShieldCheck, Clock3, History, ChevronDown, ChevronUp, CheckCircle2, XCircle, Mail } from "lucide-react";
+import { Play, RefreshCw, AlertTriangle, ShieldCheck, Clock3, History, ChevronDown, ChevronUp, CheckCircle2, Mail } from "lucide-react";
 import type { Application, ApplicationStatus, LoginState, TrackingTarget, TrackingRun } from "@applyradar/shared";
 import {
   STATUS_LABELS,

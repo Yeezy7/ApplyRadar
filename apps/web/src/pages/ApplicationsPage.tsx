@@ -3,7 +3,6 @@ import { Plus, Search, Trash2, Edit2, ExternalLink, Filter, BriefcaseBusiness, A
 import type { Application, ApplicationStatus } from "@applyradar/shared";
 import { STATUS_LABELS, STATUS_COLORS, PRIORITY_LABELS, PRIORITY_COLORS, ALL_STATUSES } from "@applyradar/shared";
 import { listApplications, deleteApplication } from "../services/applicationService";
-import { createEvent } from "../services/eventService";
 import ApplicationForm from "../components/ApplicationForm";
 
 type SortField = "company_name" | "job_title" | "status" | "priority" | "applied_at" | "updated_at";
