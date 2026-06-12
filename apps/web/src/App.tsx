@@ -5,8 +5,7 @@ import Layout from "./components/Layout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import type { Page } from "./components/Sidebar";
 import AuthPage from "./pages/AuthPage";
-import { listApplications } from "./services/applicationService";
-import { listReminders } from "./services/reminderService";
+import { getStats } from "./services/statsService";
 
 // 懒加载页面组件
 const DashboardPage = lazy(() => import("./pages/DashboardPage"));
@@ -39,13 +38,10 @@ export default function App() {
 
   const loadCounts = useCallback(async () => {
     try {
-      const [apps, reminders] = await Promise.all([
-        listApplications().catch(() => []),
-        listReminders().catch(() => []),
-      ]);
+      const stats = await getStats();
       setCounts({
-        applications: apps.length,
-        reminders: reminders.length,
+        applications: stats.total,
+        reminders: stats.pendingReminders,
       });
     } catch {
       // ignore
