@@ -12,6 +12,8 @@ export interface SyncResult {
   applications: { created: number; updated: number; skipped?: number };
   events: { created: number; skipped: number };
   reminders: { created: number; updated: number; skipped?: number };
+  tracking_targets: { created: number; updated: number; skipped?: number };
+  settings: { updated: boolean };
 }
 
 export interface UserInfo {
@@ -138,7 +140,10 @@ async function getLocalData() {
   const reminders = await invoke<any[]>("list_reminders", {
     includeDone: true,
   });
-  return { applications, reminders };
+  const trackingTargets = await invoke<any[]>("list_tracking_targets").catch(() => []);
+  const settings = await invoke<any>("get_settings").catch(() => null);
+
+  return { applications, reminders, tracking_targets: trackingTargets, settings };
 }
 
 // API 请求

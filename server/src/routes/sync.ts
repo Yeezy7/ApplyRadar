@@ -10,12 +10,14 @@ app.post('/push', async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json();
 
-  const { applications, events, reminders } = body;
+  const { applications, events, reminders, tracking_targets, settings } = body;
 
   const results = {
     applications: { created: 0, updated: 0 },
     events: { created: 0, skipped: 0 },
     reminders: { created: 0, updated: 0 },
+    tracking_targets: { created: 0, updated: 0 },
+    settings: { updated: false },
   };
 
   // 同步求职记录
@@ -24,7 +26,6 @@ app.post('/push', async (c) => {
       const existing = db.prepare('SELECT id, updated_at FROM applications WHERE id = ? AND user_id = ?').get(app.id, userId) as any;
 
       if (!existing) {
-        // 新记录，插入
         db.prepare(
           `INSERT INTO applications (id, user_id, company_name, job_title, location, salary_range, job_url, status_url, source, status, priority, applied_at, deadline_at, notes, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -37,7 +38,6 @@ app.post('/push', async (c) => {
         );
         results.applications.created++;
       } else {
-        // 已存在，检查是否需要更新
         if (new Date(app.updated_at) > new Date(existing.updated_at)) {
           db.prepare(
             `UPDATE applications SET
@@ -113,6 +113,96 @@ app.post('/push', async (c) => {
     }
   }
 
+  // 同步监控目标
+  if (tracking_targets && Array.isArray(tracking_targets)) {
+    for (const target of tracking_targets) {
+      const existing = db.prepare('SELECT id, updated_at FROM tracking_targets WHERE id = ? AND user_id = ?').get(target.id, userId) as any;
+
+      if (!existing) {
+        db.prepare(
+          `INSERT INTO tracking_targets (id, user_id, application_id, domain, status_url, ats_type, enabled, check_frequency, current_status, last_status, login_state, last_checked_at, last_success_at, last_error, last_text_hash, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          target.id, userId, target.application_id, target.domain,
+          target.status_url, target.ats_type || 'generic', target.enabled ?? 1,
+          target.check_frequency || 'daily', target.current_status || null,
+          target.last_status || null, target.login_state || 'unknown',
+          target.last_checked_at || null, target.last_success_at || null,
+          target.last_error || null, target.last_text_hash || null,
+          target.created_at, target.updated_at
+        );
+        results.tracking_targets.created++;
+      } else {
+        if (new Date(target.updated_at) > new Date(existing.updated_at)) {
+          db.prepare(
+            `UPDATE tracking_targets SET
+              domain = ?, status_url = ?, ats_type = ?, enabled = ?,
+              check_frequency = ?, current_status = ?, last_status = ?,
+              login_state = ?, last_checked_at = ?, last_success_at = ?,
+              last_error = ?, last_text_hash = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+          ).run(
+            target.domain, target.status_url, target.ats_type || 'generic',
+            target.enabled ?? 1, target.check_frequency || 'daily',
+            target.current_status || null, target.last_status || null,
+            target.login_state || 'unknown', target.last_checked_at || null,
+            target.last_success_at || null, target.last_error || null,
+            target.last_text_hash || null, target.updated_at, target.id, userId
+          );
+          results.tracking_targets.updated++;
+        }
+      }
+    }
+  }
+
+  // 同步设置
+  if (settings) {
+    const existing = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
+
+    if (!existing) {
+      const id = generateId();
+      db.prepare(
+        `INSERT INTO user_settings (id, user_id, api_key, api_base_url, model, check_frequency, notifications_enabled, auto_check_enabled, email_report_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_recipient, email_report_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, userId,
+        settings.api_key || '', settings.api_base_url || 'https://api.openai.com/v1',
+        settings.model || 'gpt-4o-mini', settings.check_frequency || 'daily',
+        settings.notifications_enabled ?? 1, settings.auto_check_enabled ?? 0,
+        settings.email_report_enabled ?? 0, settings.smtp_host || '',
+        settings.smtp_port || '465', settings.smtp_username || '',
+        settings.smtp_password || '', settings.smtp_recipient || '',
+        settings.email_report_time || '09:00'
+      );
+      results.settings.updated = true;
+    } else {
+      db.prepare(
+        `UPDATE user_settings SET
+          api_key = ?, api_base_url = ?, model = ?, check_frequency = ?,
+          notifications_enabled = ?, auto_check_enabled = ?, email_report_enabled = ?,
+          smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?,
+          smtp_recipient = ?, email_report_time = ?, updated_at = datetime('now')
+         WHERE user_id = ?`
+      ).run(
+        settings.api_key || existing.api_key,
+        settings.api_base_url || existing.api_base_url,
+        settings.model || existing.model,
+        settings.check_frequency || existing.check_frequency,
+        settings.notifications_enabled ?? existing.notifications_enabled,
+        settings.auto_check_enabled ?? existing.auto_check_enabled,
+        settings.email_report_enabled ?? existing.email_report_enabled,
+        settings.smtp_host || existing.smtp_host,
+        settings.smtp_port || existing.smtp_port,
+        settings.smtp_username || existing.smtp_username,
+        settings.smtp_password || existing.smtp_password,
+        settings.smtp_recipient || existing.smtp_recipient,
+        settings.email_report_time || existing.email_report_time,
+        userId
+      );
+      results.settings.updated = true;
+    }
+  }
+
   return c.json({ code: 0, data: results });
 });
 
@@ -123,6 +213,7 @@ app.post('/pull', async (c) => {
   const applications = db.prepare('SELECT * FROM applications WHERE user_id = ? ORDER BY updated_at DESC').all(userId);
   const events = db.prepare('SELECT * FROM application_events WHERE user_id = ? ORDER BY event_time DESC').all(userId);
   const reminders = db.prepare('SELECT * FROM reminders WHERE user_id = ? ORDER BY remind_at ASC').all(userId);
+  const tracking_targets = db.prepare('SELECT * FROM tracking_targets WHERE user_id = ? ORDER BY created_at DESC').all(userId);
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
 
   return c.json({
@@ -131,6 +222,7 @@ app.post('/pull', async (c) => {
       applications,
       events,
       reminders,
+      tracking_targets,
       settings,
       exported_at: new Date().toISOString(),
     },
@@ -142,23 +234,27 @@ app.post('/merge', async (c) => {
   const userId = c.get('userId');
   const body = await c.req.json();
 
-  const { applications, events, reminders } = body;
+  const { applications, events, reminders, tracking_targets, settings } = body;
 
   const results = {
     applications: { created: 0, updated: 0, skipped: 0 },
     events: { created: 0, skipped: 0 },
     reminders: { created: 0, updated: 0, skipped: 0 },
+    tracking_targets: { created: 0, updated: 0, skipped: 0 },
+    settings: { updated: false },
   };
 
   // 获取云端数据
   const remoteApps = db.prepare('SELECT * FROM applications WHERE user_id = ?').all(userId) as any[];
   const remoteEvents = db.prepare('SELECT * FROM application_events WHERE user_id = ?').all(userId) as any[];
   const remoteReminders = db.prepare('SELECT * FROM reminders WHERE user_id = ?').all(userId) as any[];
+  const remoteTargets = db.prepare('SELECT * FROM tracking_targets WHERE user_id = ?').all(userId) as any[];
 
   // 创建云端数据的 Map
   const remoteAppMap = new Map(remoteApps.map(a => [a.id, a]));
   const remoteEventMap = new Map(remoteEvents.map(e => [e.id, e]));
   const remoteReminderMap = new Map(remoteReminders.map(r => [r.id, r]));
+  const remoteTargetMap = new Map(remoteTargets.map(t => [t.id, t]));
 
   // 合并求职记录
   if (applications && Array.isArray(applications)) {
@@ -166,7 +262,6 @@ app.post('/merge', async (c) => {
       const remoteApp = remoteAppMap.get(localApp.id);
 
       if (!remoteApp) {
-        // 本地有，云端没有 → 上传
         db.prepare(
           `INSERT INTO applications (id, user_id, company_name, job_title, location, salary_range, job_url, status_url, source, status, priority, applied_at, deadline_at, notes, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -181,7 +276,6 @@ app.post('/merge', async (c) => {
         );
         results.applications.created++;
       } else {
-        // 两边都有，取 updated_at 更新的
         if (new Date(localApp.updated_at) > new Date(remoteApp.updated_at)) {
           db.prepare(
             `UPDATE applications SET
@@ -204,8 +298,6 @@ app.post('/merge', async (c) => {
         remoteAppMap.delete(localApp.id);
       }
     }
-
-    // 云端有，本地没有 → 下载（已在 pull 中处理）
   }
 
   // 合并事件
@@ -266,6 +358,108 @@ app.post('/merge', async (c) => {
           results.reminders.skipped++;
         }
         remoteReminderMap.delete(localReminder.id);
+      }
+    }
+  }
+
+  // 合并监控目标
+  if (tracking_targets && Array.isArray(tracking_targets)) {
+    for (const localTarget of tracking_targets) {
+      const remoteTarget = remoteTargetMap.get(localTarget.id);
+
+      if (!remoteTarget) {
+        db.prepare(
+          `INSERT INTO tracking_targets (id, user_id, application_id, domain, status_url, ats_type, enabled, check_frequency, current_status, last_status, login_state, last_checked_at, last_success_at, last_error, last_text_hash, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          localTarget.id, userId, localTarget.application_id,
+          localTarget.domain, localTarget.status_url,
+          localTarget.ats_type || 'generic', localTarget.enabled ?? 1,
+          localTarget.check_frequency || 'daily',
+          localTarget.current_status || null, localTarget.last_status || null,
+          localTarget.login_state || 'unknown', localTarget.last_checked_at || null,
+          localTarget.last_success_at || null, localTarget.last_error || null,
+          localTarget.last_text_hash || null, localTarget.created_at, localTarget.updated_at
+        );
+        results.tracking_targets.created++;
+      } else {
+        if (new Date(localTarget.updated_at) > new Date(remoteTarget.updated_at)) {
+          db.prepare(
+            `UPDATE tracking_targets SET
+              domain = ?, status_url = ?, ats_type = ?, enabled = ?,
+              check_frequency = ?, current_status = ?, last_status = ?,
+              login_state = ?, last_checked_at = ?, last_success_at = ?,
+              last_error = ?, last_text_hash = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+          ).run(
+            localTarget.domain, localTarget.status_url,
+            localTarget.ats_type || 'generic', localTarget.enabled ?? 1,
+            localTarget.check_frequency || 'daily',
+            localTarget.current_status || null, localTarget.last_status || null,
+            localTarget.login_state || 'unknown', localTarget.last_checked_at || null,
+            localTarget.last_success_at || null, localTarget.last_error || null,
+            localTarget.last_text_hash || null, localTarget.updated_at,
+            localTarget.id, userId
+          );
+          results.tracking_targets.updated++;
+        } else {
+          results.tracking_targets.skipped++;
+        }
+        remoteTargetMap.delete(localTarget.id);
+      }
+    }
+  }
+
+  // 合并设置
+  if (settings) {
+    const remoteSettings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
+
+    if (!remoteSettings) {
+      const id = generateId();
+      db.prepare(
+        `INSERT INTO user_settings (id, user_id, api_key, api_base_url, model, check_frequency, notifications_enabled, auto_check_enabled, email_report_enabled, smtp_host, smtp_port, smtp_username, smtp_password, smtp_recipient, email_report_time)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        id, userId,
+        settings.api_key || '', settings.api_base_url || 'https://api.openai.com/v1',
+        settings.model || 'gpt-4o-mini', settings.check_frequency || 'daily',
+        settings.notifications_enabled ?? 1, settings.auto_check_enabled ?? 0,
+        settings.email_report_enabled ?? 0, settings.smtp_host || '',
+        settings.smtp_port || '465', settings.smtp_username || '',
+        settings.smtp_password || '', settings.smtp_recipient || '',
+        settings.email_report_time || '09:00'
+      );
+      results.settings.updated = true;
+    } else {
+      // 取更新时间更近的设置
+      const localUpdated = settings.updated_at ? new Date(settings.updated_at) : new Date(0);
+      const remoteUpdated = (remoteSettings as any).updated_at ? new Date((remoteSettings as any).updated_at) : new Date(0);
+
+      if (localUpdated > remoteUpdated) {
+        db.prepare(
+          `UPDATE user_settings SET
+            api_key = ?, api_base_url = ?, model = ?, check_frequency = ?,
+            notifications_enabled = ?, auto_check_enabled = ?, email_report_enabled = ?,
+            smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?,
+            smtp_recipient = ?, email_report_time = ?, updated_at = datetime('now')
+           WHERE user_id = ?`
+        ).run(
+          settings.api_key || (remoteSettings as any).api_key,
+          settings.api_base_url || (remoteSettings as any).api_base_url,
+          settings.model || (remoteSettings as any).model,
+          settings.check_frequency || (remoteSettings as any).check_frequency,
+          settings.notifications_enabled ?? (remoteSettings as any).notifications_enabled,
+          settings.auto_check_enabled ?? (remoteSettings as any).auto_check_enabled,
+          settings.email_report_enabled ?? (remoteSettings as any).email_report_enabled,
+          settings.smtp_host || (remoteSettings as any).smtp_host,
+          settings.smtp_port || (remoteSettings as any).smtp_port,
+          settings.smtp_username || (remoteSettings as any).smtp_username,
+          settings.smtp_password || (remoteSettings as any).smtp_password,
+          settings.smtp_recipient || (remoteSettings as any).smtp_recipient,
+          settings.email_report_time || (remoteSettings as any).email_report_time,
+          userId
+        );
+        results.settings.updated = true;
       }
     }
   }
