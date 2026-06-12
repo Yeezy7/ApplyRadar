@@ -14,7 +14,14 @@ export interface SyncResult {
   reminders: { created: number; updated: number; skipped?: number };
 }
 
+export interface UserInfo {
+  id: string;
+  email: string;
+  nickname?: string;
+}
+
 const SYNC_CONFIG_KEY = "applyradar.sync.config";
+const USER_INFO_KEY = "applyradar.sync.user";
 
 // 获取同步配置
 export function getSyncConfig(): SyncConfig {
@@ -36,6 +43,93 @@ export function getSyncConfig(): SyncConfig {
 // 保存同步配置
 export function saveSyncConfig(config: SyncConfig): void {
   localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(config));
+}
+
+// 获取用户信息
+export function getUserInfo(): UserInfo | null {
+  const saved = localStorage.getItem(USER_INFO_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {}
+  }
+  return null;
+}
+
+// 保存用户信息
+export function saveUserInfo(user: UserInfo | null): void {
+  if (user) {
+    localStorage.setItem(USER_INFO_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(USER_INFO_KEY);
+  }
+}
+
+// 登录获取 token
+export async function loginToCloud(
+  apiBase: string,
+  email: string,
+  password: string
+): Promise<{ user: UserInfo; token: string }> {
+  const response = await fetch(`${apiBase}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || result.code !== 0) {
+    throw new Error(result.msg || "登录失败");
+  }
+
+  const { user, token } = result.data;
+
+  // 保存到配置
+  const config = getSyncConfig();
+  config.token = token;
+  saveSyncConfig(config);
+  saveUserInfo(user);
+
+  return { user, token };
+}
+
+// 注册
+export async function registerToCloud(
+  apiBase: string,
+  email: string,
+  password: string,
+  nickname?: string
+): Promise<{ user: UserInfo; token: string }> {
+  const response = await fetch(`${apiBase}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, nickname }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok || result.code !== 0) {
+    throw new Error(result.msg || "注册失败");
+  }
+
+  const { user, token } = result.data;
+
+  // 保存到配置
+  const config = getSyncConfig();
+  config.token = token;
+  saveSyncConfig(config);
+  saveUserInfo(user);
+
+  return { user, token };
+}
+
+// 退出登录
+export function logoutFromCloud(): void {
+  const config = getSyncConfig();
+  config.token = "";
+  saveSyncConfig(config);
+  saveUserInfo(null);
 }
 
 // 获取本地数据
