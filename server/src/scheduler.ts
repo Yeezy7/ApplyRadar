@@ -1,7 +1,8 @@
 import cron from 'node-cron';
 import db from './db.js';
-import { generateId } from './auth.js';
+import { generateId, generateToken } from './auth.js';
 import { escapeHtml } from './validate.js';
+import { addBatchCheckJobs } from './queue.js';
 
 // 定时任务状态
 const taskStatus = {
@@ -22,47 +23,79 @@ const taskStatus = {
   },
 };
 
-// 获取所有需要自动检查的用户
+// 获取需要自动检查的用户（根据 check_frequency 过滤）
 function getUsersForAutoCheck() {
-  return db.prepare(
+  const allUsers = db.prepare(
     'SELECT DISTINCT u.id, u.email, s.check_frequency FROM users u JOIN user_settings s ON u.id = s.user_id WHERE s.auto_check_enabled = 1'
   ).all() as any[];
+
+  const now = new Date();
+  const eligible: any[] = [];
+
+  for (const user of allUsers) {
+    const lastRun = db.prepare(
+      "SELECT created_at FROM push_logs WHERE user_id = ? AND push_type = 'auto_check' ORDER BY created_at DESC LIMIT 1"
+    ).get(user.id) as any;
+
+    if (!lastRun) {
+      eligible.push(user);
+      continue;
+    }
+
+    const lastRunTime = new Date(lastRun.created_at);
+    const diffMs = now.getTime() - lastRunTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+
+    switch (user.check_frequency) {
+      case 'every_6h':
+        if (diffHours >= 5.5) eligible.push(user);
+        break;
+      case 'every_12h':
+        if (diffHours >= 11) eligible.push(user);
+        break;
+      case 'daily':
+      default:
+        if (diffHours >= 22) eligible.push(user);
+        break;
+    }
+  }
+
+  return eligible;
 }
 
-// 执行单个用户的自动检查
+// 执行单个用户的自动检查（通过队列分发给 worker）
 async function runAutoCheckForUser(userId: string) {
   const targets = db.prepare(
     'SELECT * FROM tracking_targets WHERE user_id = ? AND enabled = 1'
   ).all(userId) as any[];
 
-  if (targets.length === 0) return { total: 0, success: 0, failed: 0 };
+  if (targets.length === 0) return { total: 0, success: 0, failed: 0, queued: 0 };
 
-  let success = 0;
+  // 生成用户 token 供 worker 回调认证
+  const token = generateToken(userId);
+
+  // 尝试通过队列分发
+  const queued = await addBatchCheckJobs(targets, token);
+
+  if (queued > 0) {
+    return { total: targets.length, success: 0, failed: 0, queued };
+  }
+
+  // 队列不可用时，直接更新 last_checked_at 避免重复调度
+  const now = new Date().toISOString();
   let failed = 0;
-
   for (const target of targets) {
     try {
-      const runId = generateId();
-      const now = new Date().toISOString();
-
-      // 创建检查记录
       db.prepare(
-        `INSERT INTO tracking_runs (id, user_id, target_id, started_at, finished_at, status, raw_status, normalized_status, confidence, login_state, ai_used, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(runId, userId, target.id, now, now, 'success', target.current_status, target.current_status, 1.0, target.login_state, 0, now);
-
-      // 更新目标最后检查时间
-      db.prepare(
-        "UPDATE tracking_targets SET last_checked_at = ?, updated_at = datetime('now') WHERE id = ?"
+        "UPDATE tracking_targets SET last_checked_at = ?, last_error = '队列不可用，无法执行检查', updated_at = datetime('now') WHERE id = ?"
       ).run(now, target.id);
-
-      success++;
-    } catch (e) {
       failed++;
+    } catch {
+      // ignore
     }
   }
 
-  return { total: targets.length, success, failed };
+  return { total: targets.length, success: 0, failed, queued: 0 };
 }
 
 // 发送邮件日报

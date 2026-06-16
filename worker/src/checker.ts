@@ -7,7 +7,6 @@ export interface CheckTarget {
   domain: string;
   status_url: string;
   ats_type: string;
-  profile_dir: string;
   last_text_hash: string | null;
 }
 
@@ -20,6 +19,7 @@ export interface CheckResult {
   confidence: number;
   pageHash: string | null;
   pageTitle: string | null;
+  contentChanged: boolean;
   errorMessage: string | null;
 }
 
@@ -27,7 +27,7 @@ export async function checkTarget(target: CheckTarget): Promise<CheckResult> {
   let context = null;
 
   try {
-    context = await launchBrowser(target.profile_dir);
+    context = await launchBrowser(target.id);
     const page = await getPage(context, target.status_url);
 
     // Wait for page to stabilize
@@ -52,6 +52,7 @@ export async function checkTarget(target: CheckTarget): Promise<CheckResult> {
         confidence: 0,
         pageHash,
         pageTitle: title,
+        contentChanged: false,
         errorMessage: loginState === "expired" ? "登录已过期" :
                       loginState === "captcha_required" ? "需要验证码" :
                       loginState === "mfa_required" ? "需要二次验证" :
@@ -60,17 +61,18 @@ export async function checkTarget(target: CheckTarget): Promise<CheckResult> {
     }
 
     // Check if content has changed
-    const contentChanged = target.last_text_hash && target.last_text_hash !== pageHash;
+    const contentChanged = !!(target.last_text_hash && target.last_text_hash !== pageHash);
 
     return {
       targetId: target.id,
       success: true,
       loginState: "valid",
-      rawStatus: text.substring(0, 1000), // Store first 1000 chars
-      normalizedStatus: null, // Will be set by AI parser if needed
+      rawStatus: text.substring(0, 1000),
+      normalizedStatus: null,
       confidence: 0,
       pageHash,
       pageTitle: title,
+      contentChanged,
       errorMessage: null,
     };
   } catch (error) {
@@ -83,6 +85,7 @@ export async function checkTarget(target: CheckTarget): Promise<CheckResult> {
       confidence: 0,
       pageHash: null,
       pageTitle: null,
+      contentChanged: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     };
   } finally {

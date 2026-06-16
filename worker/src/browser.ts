@@ -4,8 +4,8 @@ import path from "node:path";
 
 const PROFILES_DIR = process.env.PROFILES_DIR || "./profiles";
 
-export async function launchBrowser(profileDir: string): Promise<BrowserContext> {
-  const fullProfileDir = path.resolve(PROFILES_DIR, profileDir);
+export async function launchBrowser(targetId: string): Promise<BrowserContext> {
+  const fullProfileDir = path.resolve(PROFILES_DIR, targetId);
   fs.mkdirSync(fullProfileDir, { recursive: true });
 
   const context = await chromium.launchPersistentContext(fullProfileDir, {

@@ -47,6 +47,7 @@ const worker = new Worker(
           confidence: result.confidence,
           page_hash: result.pageHash,
           error_message: result.errorMessage,
+          content_changed: result.contentChanged,
           ai_used: 0,
         }),
       });
