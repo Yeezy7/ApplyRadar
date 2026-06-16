@@ -29,9 +29,12 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     const raw = JSON.parse(cookiesJson);
     if (!Array.isArray(raw) || raw.length === 0) return;
 
-    const cookies = raw
-      .filter(c => c.name && c.value && (c.domain || c.url))
-      .map(c => {
+    const valid: any[] = [];
+
+    for (const c of raw) {
+      try {
+        if (!c.name || !c.value) continue;
+
         const cookie: any = {
           name: c.name,
           value: c.value,
@@ -40,38 +43,41 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
           secure: c.secure || false,
         };
 
-        // 提供 domain 或 url
+        // 必须有 domain 或 url
         if (c.domain) {
           cookie.domain = c.domain;
+          const d = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
+          cookie.url = `http://${d}${cookie.path || '/'}`;
         } else if (c.url) {
           cookie.url = c.url;
+        } else {
+          continue; // 跳过没有 domain 和 url 的 cookie
         }
 
-        // 如果有 domain 但没有 url，生成一个 url
-        if (cookie.domain && !cookie.url) {
-          const d = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
-          cookie.url = `http://${d}${cookie.path}`;
-        }
-
-        // expirationDate (Chrome) → expires (Playwright)
-        if (c.expirationDate) {
+        // expirationDate → expires
+        if (c.expirationDate && typeof c.expirationDate === 'number') {
           cookie.expires = c.expirationDate;
         }
 
         // sameSite 转换
         if (c.sameSite) {
-          const s = c.sameSite.toLowerCase();
+          const s = String(c.sameSite).toLowerCase();
           if (s === 'unspecified' || s === 'no_restriction') cookie.sameSite = 'None';
           else if (s === 'lax') cookie.sameSite = 'Lax';
           else if (s === 'strict') cookie.sameSite = 'Strict';
         }
 
-        return cookie;
-      });
+        valid.push(cookie);
+      } catch {
+        // 跳过有问题的 cookie
+      }
+    }
 
-    if (cookies.length > 0) {
-      await context.addCookies(cookies);
-      console.log(`[worker] Injected ${cookies.length} cookies`);
+    if (valid.length > 0) {
+      await context.addCookies(valid);
+      console.log(`[worker] Injected ${valid.length}/${raw.length} cookies`);
+    } else {
+      console.warn(`[worker] No valid cookies to inject (of ${raw.length})`);
     }
   } catch (e) {
     console.error('[worker] Failed to inject cookies:', e);
