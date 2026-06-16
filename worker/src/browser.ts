@@ -70,9 +70,16 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     }
 
     if (valid.length > 0) {
-      console.log(`[${new Date().toISOString()}] [worker] Injecting ${valid.length} cookies`);
-      await context.addCookies(valid);
-      console.log(`[${new Date().toISOString()}] [worker] Cookies injected successfully`);
+      // 逐个添加，定位哪个 cookie 有问题
+      for (const cookie of valid) {
+        try {
+          console.log(`[${new Date().toISOString()}] [worker] Adding cookie:`, JSON.stringify(cookie));
+          await context.addCookies([cookie]);
+        } catch (e) {
+          console.error(`[${new Date().toISOString()}] [worker] Failed to add cookie "${cookie.name}":`, e.message);
+        }
+      }
+      console.log(`[${new Date().toISOString()}] [worker] Cookie injection complete`);
     } else {
       console.warn(`[${new Date().toISOString()}] [worker] No valid cookies to inject (of ${raw.length})`);
     }
