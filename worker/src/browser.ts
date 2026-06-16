@@ -29,6 +29,15 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     const raw = JSON.parse(cookiesJson);
     if (!Array.isArray(raw) || raw.length === 0) return;
 
+    // 打印前 3 个 cookie 的关键字段用于调试
+    console.log(`[worker] Received ${raw.length} cookies, sample:`, raw.slice(0, 3).map((c: any) => ({
+      name: c.name,
+      domain: c.domain,
+      hostOnly: c.hostOnly,
+      url: c.url,
+      path: c.path,
+    })));
+
     const valid: any[] = [];
 
     for (const c of raw) {
@@ -44,14 +53,14 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
         };
 
         // 必须有 domain 或 url
-        if (c.domain) {
+        if (c.domain && c.domain !== '.') {
           cookie.domain = c.domain;
           const d = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
-          cookie.url = `http://${d}${cookie.path || '/'}`;
+          if (d) cookie.url = `http://${d}${cookie.path || '/'}`;
         } else if (c.url) {
           cookie.url = c.url;
         } else {
-          continue; // 跳过没有 domain 和 url 的 cookie
+          continue;
         }
 
         // expirationDate → expires

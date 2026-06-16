@@ -30,16 +30,23 @@ async function syncCookiesForDomain(domain) {
     const targets = await getTrackingTargets(domain);
     if (targets.length === 0) return;
 
+    // 打印前 3 个 cookie 用于调试
+    console.log(`[ApplyRadar] Syncing ${cookies.length} cookies for ${domain}:`, cookies.slice(0, 3).map(c => ({
+      name: c.name,
+      domain: c.domain,
+      hostOnly: c.hostOnly,
+      path: c.path,
+    })));
+
     const cookieJson = JSON.stringify(cookies);
 
-    // 同步 Cookie 到所有该域名的追踪目标
     for (const target of targets) {
       await updateTrackingCookies(target.id, cookieJson);
     }
 
     await setLastSyncTime(domain, Date.now());
 
-    // 同步后自动触发检查，更新登录状态
+    // 同步后自动触发检查
     for (const target of targets) {
       try {
         const serverUrl = await getServerUrl();
@@ -51,12 +58,10 @@ async function syncCookiesForDomain(domain) {
             'Authorization': `Bearer ${token}`,
           },
         });
-      } catch {
-        // 静默失败
-      }
+      } catch {}
     }
 
-    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}, triggered ${targets.length} checks`);
+    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}`);
   } catch (e) {
     console.error(`[ApplyRadar] Failed to sync cookies for ${domain}:`, e);
   }
