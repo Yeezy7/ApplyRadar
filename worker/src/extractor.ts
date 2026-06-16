@@ -67,7 +67,10 @@ export async function detectLoginState(page: Page): Promise<string> {
     if (
       lowerText.includes("captcha") ||
       lowerText.includes("recaptcha") ||
-      lowerText.includes("verify you are human")
+      lowerText.includes("verify you are human") ||
+      lowerText.includes("人机验证") ||
+      lowerText.includes("滑动验证") ||
+      lowerText.includes("请完成安全验证")
     ) {
       return "captcha_required";
     }
@@ -76,7 +79,9 @@ export async function detectLoginState(page: Page): Promise<string> {
       lowerText.includes("two-factor") ||
       lowerText.includes("2fa") ||
       lowerText.includes("verification code") ||
-      lowerText.includes("multi-factor")
+      lowerText.includes("multi-factor") ||
+      lowerText.includes("二次验证") ||
+      lowerText.includes("短信验证码")
     ) {
       return "mfa_required";
     }
@@ -84,7 +89,10 @@ export async function detectLoginState(page: Page): Promise<string> {
     if (
       lowerText.includes("account locked") ||
       lowerText.includes("account suspended") ||
-      lowerText.includes("access denied")
+      lowerText.includes("access denied") ||
+      lowerText.includes("账号被锁定") ||
+      lowerText.includes("账号已冻结") ||
+      lowerText.includes("访问被拒绝")
     ) {
       return "blocked";
     }
@@ -95,6 +103,25 @@ export async function detectLoginState(page: Page): Promise<string> {
     });
 
     if (hasLoginForm) {
+      return "expired";
+    }
+
+    // 中文登录页面检测：页面含"登录"相关文字但不含"投递"/"申请"等求职关键词
+    const hasLoginKeyword =
+      lowerText.includes("请登录") ||
+      lowerText.includes("去登录") ||
+      lowerText.includes("立即登录") ||
+      lowerText.includes("用户登录") ||
+      lowerText.includes("账号登录");
+    const hasJobKeyword =
+      lowerText.includes("我的投递") ||
+      lowerText.includes("投递状态") ||
+      lowerText.includes("申请记录") ||
+      lowerText.includes("我的申请") ||
+      lowerText.includes("mydeliver") ||
+      lowerText.includes("application status");
+
+    if (hasLoginKeyword && !hasJobKeyword) {
       return "expired";
     }
 

@@ -92,14 +92,62 @@ export default function TrackerPage() {
       await triggerCheckTarget(target.id);
       setResults((prev) => {
         const next = new Map(prev);
-        next.set(target.id, { success: true, message: "检查任务已入队" });
+        next.set(target.id, { success: true, message: "检查任务已入队，等待结果..." });
         return next;
       });
-      // 延迟刷新，等 worker 完成检查
-      setTimeout(async () => {
-        await loadTargets();
-        await loadTargetRuns(target.id);
-      }, 3000);
+
+      // 轮询等待 worker 完成
+      const startTime = Date.now();
+      const maxWait = 30000;
+      const pollInterval = 2000;
+
+      const poll = async () => {
+        if (Date.now() - startTime > maxWait) {
+          setResults((prev) => {
+            const next = new Map(prev);
+            next.set(target.id, { success: true, message: "检查已入队，结果稍后刷新查看" });
+            return next;
+          });
+          await loadTargets();
+          return;
+        }
+
+        try {
+          const runs = await listTrackingRuns(target.id, 1);
+          if (runs.length > 0) {
+            const latestRun = runs[0];
+            const runTime = new Date(latestRun.created_at).getTime();
+            // 如果最新的 run 是入队之后创建的，说明 worker 已完成
+            if (runTime >= startTime - 1000) {
+              const success = latestRun.status === "success" && !latestRun.error_message;
+              let message = "";
+              if (!success && latestRun.login_state !== "valid") {
+                message = `登录状态: ${latestRun.login_state === "expired" ? "已过期" : latestRun.login_state}`;
+              } else if (!success && latestRun.error_message) {
+                message = `检查失败: ${latestRun.error_message}`;
+              } else if (success && latestRun.normalized_status) {
+                message = `状态: ${latestRun.normalized_status}`;
+              } else {
+                message = success ? "检查完成" : "检查失败";
+              }
+              setResults((prev) => {
+                const next = new Map(prev);
+                next.set(target.id, { success, message });
+                return next;
+              });
+              await loadTargets();
+              await loadTargetRuns(target.id);
+              return;
+            }
+          }
+        } catch {
+          // ignore polling errors
+        }
+
+        setTimeout(poll, pollInterval);
+      };
+
+      setTimeout(poll, pollInterval);
     } catch (e) {
       const message = `检查失败: ${e instanceof Error ? e.message : String(e)}`;
       setResults((prev) => {
