@@ -35,34 +35,20 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
       try {
         if (!c.name || !c.value) continue;
 
-        // 构建 url
-        let url = c.url;
-        if (!url && c.domain) {
-          const d = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
-          if (d) url = `https://${d}${c.path || '/'}`;
-        }
-        if (!url) continue;
+        const domain = c.domain?.startsWith('.') ? c.domain.slice(1) : c.domain;
+        if (!domain) continue;
 
         const cookie: any = {
           name: c.name,
           value: c.value,
-          url,
+          domain,
           path: c.path || '/',
-          httpOnly: c.httpOnly || false,
-          secure: c.secure !== undefined ? c.secure : true,
         };
 
-        // expirationDate → expires
+        if (c.httpOnly) cookie.httpOnly = true;
+        if (c.secure) cookie.secure = true;
         if (c.expirationDate && typeof c.expirationDate === 'number') {
           cookie.expires = c.expirationDate;
-        }
-
-        // sameSite 转换
-        if (c.sameSite) {
-          const s = String(c.sameSite).toLowerCase();
-          if (s === 'unspecified' || s === 'no_restriction') cookie.sameSite = 'None';
-          else if (s === 'lax') cookie.sameSite = 'Lax';
-          else if (s === 'strict') cookie.sameSite = 'Strict';
         }
 
         valid.push(cookie);
@@ -70,21 +56,18 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     }
 
     if (valid.length > 0) {
-      // 逐个添加，定位哪个 cookie 有问题
+      console.log(`[${new Date().toISOString()}] [worker] Adding ${valid.length} cookies`);
       for (const cookie of valid) {
         try {
-          console.log(`[${new Date().toISOString()}] [worker] Adding cookie:`, JSON.stringify(cookie));
           await context.addCookies([cookie]);
         } catch (e) {
-          console.error(`[${new Date().toISOString()}] [worker] Failed to add cookie "${cookie.name}":`, String(e));
+          console.error(`[${new Date().toISOString()}] [worker] Failed cookie "${cookie.name}":`, String(e));
         }
       }
-      console.log(`[${new Date().toISOString()}] [worker] Cookie injection complete`);
-    } else {
-      console.warn(`[${new Date().toISOString()}] [worker] No valid cookies to inject (of ${raw.length})`);
+      console.log(`[${new Date().toISOString()}] [worker] Done`);
     }
   } catch (e) {
-    console.error(`[${new Date().toISOString()}] [worker] Failed to inject cookies:`, e);
+    console.error(`[${new Date().toISOString()}] [worker] injectCookies error:`, e);
   }
 }
 
