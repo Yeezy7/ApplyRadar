@@ -29,39 +29,28 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     const raw = JSON.parse(cookiesJson);
     if (!Array.isArray(raw) || raw.length === 0) return;
 
-    // 打印前 3 个 cookie 的关键字段用于调试
-    console.log(`[${new Date().toISOString()}] [worker] Received ${raw.length} cookies, sample:`, raw.slice(0, 3).map((c: any) => ({
-      name: c.name,
-      domain: c.domain,
-      hostOnly: c.hostOnly,
-      url: c.url,
-      path: c.path,
-    })));
-
     const valid: any[] = [];
 
     for (const c of raw) {
       try {
         if (!c.name || !c.value) continue;
 
+        // 构建 url
+        let url = c.url;
+        if (!url && c.domain) {
+          const d = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
+          if (d) url = `https://${d}${c.path || '/'}`;
+        }
+        if (!url) continue;
+
         const cookie: any = {
           name: c.name,
           value: c.value,
+          url,
           path: c.path || '/',
           httpOnly: c.httpOnly || false,
-          secure: c.secure || false,
+          secure: c.secure !== undefined ? c.secure : true,
         };
-
-        // 必须有 domain 或 url
-        if (c.domain && c.domain !== '.') {
-          cookie.domain = c.domain;
-          const d = c.domain.startsWith('.') ? c.domain.slice(1) : c.domain;
-          if (d) cookie.url = `http://${d}${cookie.path || '/'}`;
-        } else if (c.url) {
-          cookie.url = c.url;
-        } else {
-          continue;
-        }
 
         // expirationDate → expires
         if (c.expirationDate && typeof c.expirationDate === 'number') {
@@ -77,19 +66,13 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
         }
 
         valid.push(cookie);
-      } catch {
-        // 跳过有问题的 cookie
-      }
+      } catch {}
     }
 
     if (valid.length > 0) {
-      console.log(`[${new Date().toISOString()}] [worker] About to inject ${valid.length} cookies:`, valid.map(c => ({
-        name: c.name,
-        domain: c.domain,
-        url: c.url,
-      })));
+      console.log(`[${new Date().toISOString()}] [worker] Injecting ${valid.length} cookies`);
       await context.addCookies(valid);
-      console.log(`[${new Date().toISOString()}] [worker] Injected ${valid.length}/${raw.length} cookies`);
+      console.log(`[${new Date().toISOString()}] [worker] Cookies injected successfully`);
     } else {
       console.warn(`[${new Date().toISOString()}] [worker] No valid cookies to inject (of ${raw.length})`);
     }
