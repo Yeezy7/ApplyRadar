@@ -133,12 +133,102 @@ function setupCurrentPage() {
 async function syncDomain(domain, btn) {
   btn.disabled = true;
   btn.textContent = '...';
+  setStatus(`同步 ${domain}...`);
   const r = await sendMessage({ type: 'SYNC_COOKIES', domain });
   btn.disabled = false;
-  btn.textContent = r?.success ? '✓ 已同步' : '✗ 失败';
-  setTimeout(() => { btn.textContent = '同步 Cookie'; }, 2000);
+  if (r?.success) {
+    btn.textContent = '✓ 已同步';
+    setStatus(`${domain} 同步完成，检查中...`);
+    pollStatusUpdates();
+  } else {
+    btn.textContent = '✗ 失败';
+    setStatus('同步失败');
+  }
+  setTimeout(() => { btn.textContent = '同步 Cookie'; }, 2500);
   loadDomains();
   loadCookies();
+}
+
+let pollTimer = null;
+let prevStatuses = {};
+
+function captureStatuses() {
+  const statuses = {};
+  $('#target-list').querySelectorAll('.list-item').forEach(item => {
+    const badges = item.querySelectorAll('.badge-sm');
+    badges.forEach(b => {
+      if (b.classList.contains('badge-danger') || b.classList.contains('badge-warning')) {
+        statuses[item.dataset.url] = true;
+      }
+    });
+  });
+  return statuses;
+}
+
+async function pollStatusUpdates() {
+  if (pollTimer) clearTimeout(pollTimer);
+  prevStatuses = captureStatuses();
+
+  let attempts = 0;
+  const maxAttempts = 15;
+  const interval = 2000;
+
+  const poll = async () => {
+    attempts++;
+
+    // 只刷新数据，不重建整个 DOM
+    try {
+      const [targets, apps] = await Promise.all([getTrackingTargets(), getApplications()]);
+      const appMap = new Map(apps.map(a => [a.id, a]));
+      updateTargetBadges(targets, appMap);
+    } catch {}
+
+    // 检查是否还有需要关注的状态
+    const currentStatuses = captureStatuses();
+    const hasIssues = Object.keys(currentStatuses).length > 0;
+
+    if (!hasIssues || attempts >= maxAttempts) {
+      setStatus('就绪');
+      return;
+    }
+
+    setStatus(`检查中... (${attempts})`);
+    pollTimer = setTimeout(poll, interval);
+  };
+
+  pollTimer = setTimeout(poll, 2000);
+}
+
+function updateTargetBadges(targets, appMap) {
+  const SL = { to_apply:'待投递', applied:'已投递', received:'已收到', under_review:'审核中', assessment:'测评中', interview:'面试中', final_interview:'终面', offer:'Offer', rejected:'已拒绝', withdrawn:'已撤回', unknown:'未知' };
+  const SC = { to_apply:'neutral', applied:'neutral', received:'success', under_review:'warning', assessment:'warning', interview:'warning', final_interview:'warning', offer:'success', rejected:'danger', withdrawn:'neutral', unknown:'neutral' };
+  const LL = { valid:'正常', expired:'已过期', captcha_required:'需验证', mfa_required:'需验证', blocked:'被阻止', unknown:'未知' };
+  const LC = { valid:'success', expired:'danger', captcha_required:'warning', mfa_required:'warning', blocked:'danger', unknown:'neutral' };
+
+  const el = $('#target-list');
+  el.querySelectorAll('.list-item').forEach(item => {
+    const url = item.dataset.url;
+    const t = targets.find(t => t.status_url === url);
+    if (!t) return;
+
+    const s = t.current_status || 'unknown';
+    const l = t.login_state || 'unknown';
+
+    // 更新状态 badge
+    const badges = item.querySelectorAll('.badge-sm');
+    if (badges.length >= 2) {
+      badges[0].className = `badge-sm badge-${SC[s]||'neutral'}`;
+      badges[0].innerHTML = `<span class="badge-dot"></span>${SL[s]||s}`;
+      badges[1].className = `badge-sm badge-${LC[l]||'neutral'}`;
+      badges[1].innerHTML = `<span class="badge-dot"></span>${LL[l]||l}`;
+    }
+
+    // 更新时间
+    const timeEl = item.querySelector('.list-item-sub:last-child span:last-child');
+    if (timeEl && t.last_checked_at) {
+      timeEl.textContent = `· ${formatTime(Date.parse(t.last_checked_at))}`;
+    }
+  });
 }
 
 async function addDomain(domain) {
@@ -387,9 +477,9 @@ $('#sync-all-btn').addEventListener('click', async () => {
   setStatus('同步中...');
   await sendMessage({ type: 'SYNC_ALL' });
   btn.classList.remove('spinning');
-  setStatus('同步完成');
+  setStatus('同步完成，检查中...');
   await Promise.all([loadDomains(), loadCookies()]);
-  setTimeout(() => setStatus('就绪'), 3000);
+  pollStatusUpdates();
 });
 
 // ===== Settings =====

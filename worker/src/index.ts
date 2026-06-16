@@ -5,7 +5,8 @@ import { checkTarget, type CheckTarget, type CheckResult } from "./checker.js";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
-const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "2", 10);
+const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "5", 10);
+const RATE_LIMIT = parseInt(process.env.WORKER_RATE_LIMIT || "30", 10);
 
 const ts = () => new Date().toISOString();
 
@@ -67,8 +68,8 @@ const worker = new Worker(
     connection: connection as any,
     concurrency: CONCURRENCY,
     limiter: {
-      max: 10,
-      duration: 60000, // 10 jobs per minute
+      max: RATE_LIMIT,
+      duration: 60000,
     },
   }
 );
