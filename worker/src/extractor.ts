@@ -112,7 +112,11 @@ export async function detectLoginState(page: Page): Promise<string> {
       lowerText.includes("去登录") ||
       lowerText.includes("立即登录") ||
       lowerText.includes("用户登录") ||
-      lowerText.includes("账号登录");
+      lowerText.includes("账号登录") ||
+      lowerText.includes("登录/注册") ||
+      lowerText.includes("登录注册") ||
+      lowerText.includes("登录 |") ||
+      lowerText.includes("| 登录");
     const hasJobKeyword =
       lowerText.includes("我的投递") ||
       lowerText.includes("投递状态") ||
@@ -122,6 +126,11 @@ export async function detectLoginState(page: Page): Promise<string> {
       lowerText.includes("application status");
 
     if (hasLoginKeyword && !hasJobKeyword) {
+      return "expired";
+    }
+
+    // URL 含 hash 路由（如 #/myDeliver）但页面是首页内容，说明未登录被重定向
+    if (lowerUrl.includes("#/") && hasLoginKeyword) {
       return "expired";
     }
 
