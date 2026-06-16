@@ -469,21 +469,11 @@ async fn run_checks_for_targets(
             let has_ai_config = { let (api_key, _, _) = settings::get_ai_settings(pool).await; !api_key.is_empty() };
 
             if is_login_valid && !has_ai_config {
-                target_failed = true;
-                result.failed += 1;
-                let error_message = "未配置 AI API Key，无法识别状态".to_string();
-                item_message = error_message.clone();
-                update.last_error = Some(error_message.clone());
-                let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
-                    target_id: target.id.clone(), status: "failed".to_string(), raw_status: None, normalized_status: None,
-                    confidence: None, login_state: res.login_state.clone(), error_message: Some(error_message.clone()),
-                    page_hash: res.text_hash.clone(), ai_used: Some(0),
-                }).await;
-                let _ = super::event::create_event_inner(pool, &super::event::CreateEventInput {
-                    application_id: target.application_id.clone(), event_type: "check_failed".to_string(),
-                    title: "AI 未配置".to_string(), content: Some(error_message.clone()),
-                    old_status: None, new_status: None, handled_at: None, handled_action: None,
-                }).await;
+                item_message = "未配置 AI API Key，跳过识别".to_string();
+                update.last_error = Some(item_message.clone());
+                let _ = update_tracking_target_inner(pool, &target.id, &update).await;
+                result.items.push(ManualCheckItem { target_id: target.id.clone(), success: false, message: item_message });
+                continue;
             }
 
             if is_login_valid && res.page_text.is_some() && has_ai_config {
