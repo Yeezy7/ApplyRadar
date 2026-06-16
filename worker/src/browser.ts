@@ -29,40 +29,50 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     const raw = JSON.parse(cookiesJson);
     if (!Array.isArray(raw) || raw.length === 0) return;
 
-    // 转换 Chrome Cookie 格式为 Playwright 格式
-    const cookies = raw.map(c => {
-      const cookie: any = {
-        name: c.name,
-        value: c.value,
-        domain: c.domain,
-        path: c.path || '/',
-        httpOnly: c.httpOnly || false,
-        secure: c.secure || false,
-      };
+    const cookies = raw
+      .filter(c => c.name && c.value && (c.domain || c.url))
+      .map(c => {
+        const cookie: any = {
+          name: c.name,
+          value: c.value,
+          path: c.path || '/',
+          httpOnly: c.httpOnly || false,
+          secure: c.secure || false,
+        };
 
-      // expirationDate (Chrome, seconds) → expires (Playwright, seconds)
-      if (c.expirationDate) {
-        cookie.expires = c.expirationDate;
-      }
+        // 提供 domain 或 url
+        if (c.domain) {
+          cookie.domain = c.domain;
+        } else if (c.url) {
+          cookie.url = c.url;
+        }
 
-      // sameSite: "unspecified" → "None", "lax" → "Lax", "strict" → "Strict"
-      if (c.sameSite) {
-        const s = c.sameSite.toLowerCase();
-        if (s === 'unspecified' || s === 'no_restriction') cookie.sameSite = 'None';
-        else if (s === 'lax') cookie.sameSite = 'Lax';
-        else if (s === 'strict') cookie.sameSite = 'Strict';
-      }
+        // 如果有 domain 但没有 url，生成一个 url
+        if (cookie.domain && !cookie.url) {
+          const d = cookie.domain.startsWith('.') ? cookie.domain.slice(1) : cookie.domain;
+          cookie.url = `http://${d}${cookie.path}`;
+        }
 
-      // 需要 url 或 domain+path 来设置 cookie
-      if (cookie.domain && cookie.domain.startsWith('.')) {
-        cookie.url = `http://${cookie.domain.slice(1)}${cookie.path}`;
-      }
+        // expirationDate (Chrome) → expires (Playwright)
+        if (c.expirationDate) {
+          cookie.expires = c.expirationDate;
+        }
 
-      return cookie;
-    });
+        // sameSite 转换
+        if (c.sameSite) {
+          const s = c.sameSite.toLowerCase();
+          if (s === 'unspecified' || s === 'no_restriction') cookie.sameSite = 'None';
+          else if (s === 'lax') cookie.sameSite = 'Lax';
+          else if (s === 'strict') cookie.sameSite = 'Strict';
+        }
 
-    await context.addCookies(cookies);
-    console.log(`[worker] Injected ${cookies.length} cookies`);
+        return cookie;
+      });
+
+    if (cookies.length > 0) {
+      await context.addCookies(cookies);
+      console.log(`[worker] Injected ${cookies.length} cookies`);
+    }
   } catch (e) {
     console.error('[worker] Failed to inject cookies:', e);
   }
