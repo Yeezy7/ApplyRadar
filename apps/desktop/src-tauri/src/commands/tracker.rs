@@ -445,6 +445,8 @@ pub async fn update_tracking_target_inner(pool: &SqlitePool, id: &str, input: &U
     if let Some(ref v) = input.last_error {
         sets.push("last_error = ?".to_string());
         values.push(v.clone());
+    } else {
+        sets.push("last_error = NULL".to_string());
     }
     if let Some(ref v) = input.last_text_hash {
         sets.push("last_text_hash = ?".to_string());

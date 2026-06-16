@@ -469,44 +469,21 @@ async fn run_checks_for_targets(
             let has_ai_config = { let (api_key, _, _) = settings::get_ai_settings(pool).await; !api_key.is_empty() };
 
             if is_login_valid && !has_ai_config {
-                if let (Some(new_status), Some(confidence)) = (res.normalized_status.clone(), res.confidence.map(|v| v.clamp(0.0, 1.0))) {
-                    let old_status = &target.current_status;
-                    if confidence >= 0.85 {
-                        update.current_status = Some(new_status.clone());
-                        if old_status != "unknown" { update.last_status = Some(old_status.clone()); }
-                        let _ = sqlx::query("UPDATE applications SET status = ?, updated_at = ? WHERE id = ?")
-                            .bind(&new_status).bind(&now).bind(&target.application_id).execute(pool).await;
-                        if old_status != "unknown" && old_status != &new_status {
-                            result.status_changes += 1;
-                            item_message = format!("规则识别状态变更: {} -> {}", old_status, new_status);
-                            let _ = super::event::create_event_inner(pool, &super::event::CreateEventInput {
-                                application_id: target.application_id.clone(), event_type: "status_change".to_string(),
-                                title: "规则检测状态变更".to_string(), content: res.raw_status.clone(),
-                                old_status: Some(old_status.clone()), new_status: Some(new_status.clone()),
-                                handled_at: None, handled_action: None,
-                            }).await;
-                            let body = if let Some(app) = get_application_summary(pool, &target.application_id).await {
-                                format!("{} - {}: {} -> {}", app.company_name, app.job_title, old_status, new_status)
-                            } else { format!("{}: {} -> {}", target.domain, old_status, new_status) };
-                            emit_auto_check_notify(app_handle, pool, AutoCheckNotify {
-                                kind: "status_change".to_string(), title: "状态变化".to_string(), body,
-                                target_id: Some(target.id.clone()), application_id: Some(target.application_id.clone()),
-                            });
-                        } else if old_status == "unknown" {
-                            item_message = format!("规则识别状态: {}", new_status);
-                            let _ = super::event::create_event_inner(pool, &super::event::CreateEventInput {
-                                application_id: target.application_id.clone(), event_type: "status_change".to_string(),
-                                title: "规则识别状态".to_string(), content: Some(format!("识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32)),
-                                old_status: None, new_status: Some(new_status.clone()), handled_at: None, handled_action: None,
-                            }).await;
-                        }
-                    } else if confidence >= 0.60 {
-                        let created = create_pending_status_event_if_missing(pool, &target.application_id, "规则识别待确认",
-                            format!("规则识别为 \"{}\"，置信度 {}%", new_status, (confidence * 100.0) as i32), &new_status,
-                        ).await.unwrap_or(false);
-                        item_message = if created { format!("规则识别待确认: {}，置信度 {}%", new_status, (confidence * 100.0) as i32) } else { format!("规则识别待确认已存在: {}", new_status) };
-                    }
-                }
+                target_failed = true;
+                result.failed += 1;
+                let error_message = "未配置 AI API Key，无法识别状态".to_string();
+                item_message = error_message.clone();
+                update.last_error = Some(error_message.clone());
+                let _ = create_tracking_run_inner(pool, &CreateTrackingRunInput {
+                    target_id: target.id.clone(), status: "failed".to_string(), raw_status: None, normalized_status: None,
+                    confidence: None, login_state: res.login_state.clone(), error_message: Some(error_message.clone()),
+                    page_hash: res.text_hash.clone(), ai_used: Some(0),
+                }).await;
+                let _ = super::event::create_event_inner(pool, &super::event::CreateEventInput {
+                    application_id: target.application_id.clone(), event_type: "check_failed".to_string(),
+                    title: "AI 未配置".to_string(), content: Some(error_message.clone()),
+                    old_status: None, new_status: None, handled_at: None, handled_action: None,
+                }).await;
             }
 
             if is_login_valid && res.page_text.is_some() && has_ai_config {
