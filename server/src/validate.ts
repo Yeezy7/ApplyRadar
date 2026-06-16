@@ -45,19 +45,19 @@ export const reminderSchema = z.object({
 
 // 设置 schema
 export const settingsSchema = z.object({
-  api_key: z.string().max(200).optional(),
-  api_base_url: z.string().url().max(500).optional(),
-  model: z.string().max(100).optional(),
-  check_frequency: z.enum(['manual', 'daily', 'every_12h', 'every_6h']).optional(),
-  notifications_enabled: z.boolean().optional(),
-  auto_check_enabled: z.boolean().optional(),
-  email_report_enabled: z.boolean().optional(),
-  smtp_host: z.string().max(200).optional(),
-  smtp_port: z.string().max(10).optional(),
-  smtp_username: z.string().max(200).optional(),
-  smtp_password: z.string().max(200).optional(),
-  smtp_recipient: z.string().email().max(255).optional(),
-  email_report_time: z.string().max(10).optional(),
+  api_key: z.string().max(200).nullish(),
+  api_base_url: z.string().url().max(500).nullish(),
+  model: z.string().max(100).nullish(),
+  check_frequency: z.enum(['manual', 'daily', 'every_12h', 'every_6h']).nullish(),
+  notifications_enabled: z.union([z.boolean(), z.number()]).nullish(),
+  auto_check_enabled: z.union([z.boolean(), z.number()]).nullish(),
+  email_report_enabled: z.union([z.boolean(), z.number()]).nullish(),
+  smtp_host: z.string().max(200).nullish(),
+  smtp_port: z.string().max(10).nullish(),
+  smtp_username: z.string().max(200).nullish(),
+  smtp_password: z.string().max(200).nullish(),
+  smtp_recipient: z.string().max(255).nullish(),
+  email_report_time: z.string().max(10).nullish(),
 });
 
 // 验证中间件
