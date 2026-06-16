@@ -83,6 +83,11 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     }
 
     if (valid.length > 0) {
+      console.log(`[${new Date().toISOString()}] [worker] About to inject ${valid.length} cookies:`, valid.map(c => ({
+        name: c.name,
+        domain: c.domain,
+        url: c.url,
+      })));
       await context.addCookies(valid);
       console.log(`[${new Date().toISOString()}] [worker] Injected ${valid.length}/${raw.length} cookies`);
     } else {
