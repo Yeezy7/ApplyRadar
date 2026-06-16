@@ -1,0 +1,193 @@
+#applyradar-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* FAB 按钮 */
+.ar-fab-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #1c1917;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ar-fab-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+  background: #292524;
+}
+
+.ar-fab-btn:active {
+  transform: scale(0.95);
+}
+
+.ar-fab-icon {
+  transition: transform 0.3s ease;
+}
+
+.ar-fab-btn:hover .ar-fab-icon {
+  transform: rotate(15deg);
+}
+
+/* 展开面板 */
+.ar-fab-panel {
+  position: absolute;
+  bottom: 56px;
+  right: 0;
+  width: 300px;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(8px) scale(0.95);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.ar-fab-panel-open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+.ar-fab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #1c1917;
+  color: white;
+}
+
+.ar-fab-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ar-fab-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: rgba(255,255,255,0.7);
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.ar-fab-close:hover {
+  background: rgba(255,255,255,0.2);
+  color: white;
+}
+
+.ar-fab-body {
+  padding: 16px;
+}
+
+.ar-fab-loading {
+  text-align: center;
+  color: #a8a29e;
+  font-size: 12px;
+  padding: 12px;
+}
+
+/* 信息行 */
+.ar-fab-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ar-fab-info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ar-fab-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #a8a29e;
+  min-width: 32px;
+  flex-shrink: 0;
+}
+
+.ar-fab-value {
+  font-size: 12px;
+  color: #1c1917;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.ar-fab-domain {
+  font-family: monospace;
+  font-size: 11px;
+  color: #78716c;
+}
+
+/* 确认按钮 */
+.ar-fab-confirm {
+  width: 100%;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #1c1917;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ar-fab-confirm:hover {
+  background: #292524;
+}
+
+.ar-fab-confirm:disabled {
+  background: #d6d3d1;
+  cursor: not-allowed;
+}
+
+.ar-fab-confirm.ar-fab-success {
+  background: #16a34a;
+}
+
+.ar-fab-confirm.ar-fab-error {
+  background: #dc2626;
+}
+
+/* Spinner */
+.ar-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: ar-spin 0.6s linear infinite;
+}
+
+@keyframes ar-spin {
+  to { transform: rotate(360deg); }
+}

@@ -60,8 +60,12 @@ setInterval(() => {
 // Middleware
 app.use('*', cors({
   origin: (origin) => {
-    // 允许无 origin（如 curl 请求）
+    // 允许无 origin（如 curl、扩展请求）
     if (!origin) return origin;
+    // 允许 chrome-extension 和 moz-extension
+    if (origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://')) {
+      return origin;
+    }
     // 检查白名单
     if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.includes('*')) {
       return origin;

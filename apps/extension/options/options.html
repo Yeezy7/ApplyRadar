@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="../icons/icon48.png" alt="" class="logo">
+      <h1>ApplyRadar 设置</h1>
+    </div>
+
+    <div class="card">
+      <h2>服务器</h2>
+      <div class="form-group">
+        <label for="server-url">服务器地址</label>
+        <input type="url" id="server-url" placeholder="https://www.yezzy7.xyz" />
+      </div>
+      <div class="form-group">
+        <label for="auth-token">Token</label>
+        <div class="input-row">
+          <input type="text" id="auth-token" placeholder="粘贴 Bearer Token" />
+          <button id="test-btn" class="btn btn-outline">测试连接</button>
+        </div>
+        <div class="hint">在 Web 端 Network 请求的 Authorization Header 中获取</div>
+      </div>
+      <button id="save-btn" class="btn btn-primary">保存设置</button>
+      <div id="save-status" class="status"></div>
+    </div>
+
+    <div class="card">
+      <h2>监控域名</h2>
+      <div id="domains-list" class="domains-list"></div>
+      <div class="input-row">
+        <input type="text" id="new-domain" placeholder="添加新域名" />
+        <button id="add-btn" class="btn btn-outline">添加</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>同步设置</h2>
+      <label class="checkbox-label">
+        <input type="checkbox" id="auto-sync" checked />
+        <span>Cookie 变化时自动同步</span>
+      </label>
+      <label class="checkbox-label">
+        <input type="checkbox" id="session-check" checked />
+        <span>定时检查登录状态（每小时）</span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>操作</h2>
+      <div class="btn-row">
+        <button id="sync-all-btn" class="btn btn-outline">立即同步全部</button>
+        <button id="check-sessions-btn" class="btn btn-outline">检查登录状态</button>
+      </div>
+      <button id="logout-btn" class="btn btn-danger" style="margin-top:12px;width:100%">退出登录</button>
+    </div>
+
+    <div class="footer">
+      ApplyRadar Extension v1.0.0
+    </div>
+  </div>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 未登录 -->
+    <div id="login-view" class="view" style="display:none">
+      <div class="header">
+        <div class="header-left">
+          <img src="../icons/icon48.png" alt="" class="logo">
+          <span class="title">ApplyRadar</span>
+        </div>
+      </div>
+      <div class="login-form">
+        <input type="email" id="email" placeholder="邮箱" autocomplete="email" />
+        <input type="password" id="password" placeholder="密码" autocomplete="current-password" />
+        <button id="login-btn" class="btn btn-primary">登录</button>
+        <div id="login-error" class="error"></div>
+      </div>
+    </div>
+
+    <!-- 已登录 -->
+    <div id="main-view" class="view" style="display:none">
+      <div class="header">
+        <div class="header-left">
+          <img src="../icons/icon48.png" alt="" class="logo-small">
+          <span class="title">ApplyRadar</span>
+        </div>
+        <div class="header-right">
+          <button id="sync-all-btn" class="btn-icon" title="同步全部 Cookie">↻</button>
+          <button id="settings-btn" class="btn-icon" title="设置">⚙</button>
+        </div>
+      </div>
+
+      <!-- 当前域名 -->
+      <div id="current-domain" class="current-domain" style="display:none">
+        <div class="domain-info">
+          <span id="domain-name" class="domain-name"></span>
+          <span id="domain-status" class="domain-status"></span>
+        </div>
+        <button id="sync-current-btn" class="btn btn-small">同步 Cookie</button>
+      </div>
+
+      <!-- 已配置域名 -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">监控域名</span>
+          <button id="add-domain-btn" class="btn-text">+ 添加</button>
+        </div>
+        <div id="domain-list" class="domain-list">
+          <div class="loading"><span class="spinner"></span> 加载中...</div>
+        </div>
+      </div>
+
+      <!-- 追踪目标 -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">追踪目标</span>
+          <span id="target-count" class="badge">0</span>
+        </div>
+        <div id="target-list" class="target-list">
+          <div class="loading"><span class="spinner"></span> 加载中...</div>
+        </div>
+      </div>
+
+      <!-- 状态栏 -->
+      <div id="status-bar" class="status-bar">
+        <span id="last-sync-time">-</span>
+      </div>
+    </div>
+
+    <!-- 添加域名弹窗 -->
+    <div id="add-domain-modal" class="modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <span>添加监控域名</span>
+          <button id="close-modal-btn" class="btn-icon" style="color:#78716c">✕</button>
+        </div>
+        <input type="text" id="new-domain-input" placeholder="例如: dfmc.hotjob.cn" />
+        <button id="confirm-add-btn" class="btn btn-primary" style="width:100%">添加</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -20,6 +20,7 @@ const app = new Hono<AppEnv>();
 app.get('/', (c) => {
   const userId = c.get('userId');
   const applicationId = c.req.query('application_id');
+  const domain = c.req.query('domain');
 
   let sql = 'SELECT * FROM tracking_targets WHERE user_id = ?';
   const params: any[] = [userId];
@@ -29,10 +30,24 @@ app.get('/', (c) => {
     params.push(applicationId);
   }
 
+  if (domain) {
+    sql += ' AND domain = ?';
+    params.push(domain);
+  }
+
   sql += ' ORDER BY created_at DESC';
 
   const rows = db.prepare(sql).all(...params);
   return c.json({ code: 0, data: rows });
+});
+
+// Get all unique domains with tracking targets
+app.get('/domains', (c) => {
+  const userId = c.get('userId');
+  const rows = db.prepare(
+    'SELECT DISTINCT domain FROM tracking_targets WHERE user_id = ?'
+  ).all(userId) as any[];
+  return c.json({ code: 0, data: rows.map(r => r.domain) });
 });
 
 // Get single tracking target
