@@ -45,3 +45,11 @@ export async function createTrackingRun(
 ): Promise<TrackingRun> {
   return api.post<TrackingRun>(`/api/tracking/${targetId}/runs`);
 }
+
+export async function triggerCheckTarget(
+  targetId: string,
+): Promise<{ targetId: string; queued: boolean }> {
+  return api.post<{ targetId: string; queued: boolean }>(
+    `/api/auto-check/check/${targetId}`,
+  );
+}

@@ -10,7 +10,7 @@ import {
 import {
   listTrackingTargets,
   listTrackingRuns,
-  createTrackingRun,
+  triggerCheckTarget,
 } from "../services/trackingService";
 import { listApplications } from "../services/applicationService";
 import {
@@ -89,14 +89,17 @@ export default function TrackerPage() {
     });
 
     try {
-      await createTrackingRun(target.id);
+      await triggerCheckTarget(target.id);
       setResults((prev) => {
         const next = new Map(prev);
-        next.set(target.id, { success: true, message: "检查完成" });
+        next.set(target.id, { success: true, message: "检查任务已入队" });
         return next;
       });
-      await loadTargets();
-      await loadTargetRuns(target.id);
+      // 延迟刷新，等 worker 完成检查
+      setTimeout(async () => {
+        await loadTargets();
+        await loadTargetRuns(target.id);
+      }, 3000);
     } catch (e) {
       const message = `检查失败: ${e instanceof Error ? e.message : String(e)}`;
       setResults((prev) => {
