@@ -4,6 +4,8 @@ import {
   getLastSyncTimes,
   setLastSyncTime,
   isLoggedIn,
+  getServerUrl,
+  getToken,
 } from '../lib/storage.js';
 import {
   getTrackingTargets,
@@ -25,15 +27,36 @@ async function syncCookiesForDomain(domain) {
     const cookies = await chrome.cookies.getAll({ domain });
     if (cookies.length === 0) return;
 
-    const targets = await getTrackingTargets();
-    const target = targets.find(t => t.domain === domain || domain.endsWith('.' + t.domain));
-    if (!target) return;
+    const targets = await getTrackingTargets(domain);
+    if (targets.length === 0) return;
 
     const cookieJson = JSON.stringify(cookies);
-    await updateTrackingCookies(target.id, cookieJson);
+
+    // 同步 Cookie 到所有该域名的追踪目标
+    for (const target of targets) {
+      await updateTrackingCookies(target.id, cookieJson);
+    }
+
     await setLastSyncTime(domain, Date.now());
 
-    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}`);
+    // 同步后自动触发检查，更新登录状态
+    for (const target of targets) {
+      try {
+        const serverUrl = await getServerUrl();
+        const token = await getToken();
+        await fetch(`${serverUrl}/api/auto-check/check/${target.id}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+      } catch {
+        // 静默失败
+      }
+    }
+
+    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}, triggered ${targets.length} checks`);
   } catch (e) {
     console.error(`[ApplyRadar] Failed to sync cookies for ${domain}:`, e);
   }
@@ -208,6 +231,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await syncCookiesForDomain(domain);
 
         sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'CHECK_TARGET') {
+    (async () => {
+      try {
+        const targetId = message.targetId;
+        const serverUrl = await getServerUrl();
+        const token = await getToken();
+        const result = await fetch(`${serverUrl}/api/auto-check/check/${targetId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        const data = await result.json();
+        if (data.code === 0) {
+          sendResponse({ success: true, message: '检查任务已入队' });
+        } else {
+          sendResponse({ success: false, error: data.msg || '检查失败' });
+        }
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }

@@ -62,3 +62,7 @@ export async function createTrackingTarget(data) {
 export async function getStats() {
   return api.get('/api/stats');
 }
+
+export async function getApplications() {
+  return api.get('/api/applications');
+}

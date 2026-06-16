@@ -8,7 +8,7 @@ const STORAGE_KEYS = {
 
 export async function getServerUrl() {
   const result = await chrome.storage.local.get(STORAGE_KEYS.SERVER_URL);
-  return result[STORAGE_KEYS.SERVER_URL] || 'https://www.yezzy7.xyz';
+  return result[STORAGE_KEYS.SERVER_URL] || 'http://8.148.84.224';
 }
 
 export async function setServerUrl(url) {

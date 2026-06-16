@@ -1,17 +1,12 @@
-import { isLoggedIn, getToken, setToken, getSyncedDomains, setSyncedDomains, addSyncedDomain, removeSyncedDomain } from '../lib/storage.js';
-import { login, getTrackingTargets, getTrackingDomains } from '../lib/api.js';
-
-// ========== DOM ==========
+import { isLoggedIn, setToken, getSyncedDomains, setSyncedDomains, addSyncedDomain, removeSyncedDomain } from '../lib/storage.js';
+import { login, getTrackingTargets, getTrackingDomains, getApplications } from '../lib/api.js';
 
 const $ = (sel) => document.querySelector(sel);
-
-// ========== 工具 ==========
+const $$ = (sel) => document.querySelectorAll(sel);
 
 function sendMessage(msg) {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage(msg, (response) => {
-      resolve(response || { success: false, error: 'No response' });
-    });
+    chrome.runtime.sendMessage(msg, (r) => resolve(r || { success: false }));
   });
 }
 
@@ -26,74 +21,48 @@ function formatTime(ts) {
   return `${Math.floor(hr / 24)}天前`;
 }
 
-function getCookieHealth(cookies) {
-  if (!cookies || cookies.length === 0) return 'none';
-  const now = Date.now();
-  const hasExpired = cookies.some(c => c.expirationDate && c.expirationDate * 1000 < now);
-  if (hasExpired) return 'expired';
-  const hasExpiringSoon = cookies.some(c => {
-    if (!c.expirationDate) return false;
-    return (c.expirationDate * 1000 - now) < 24 * 60 * 60 * 1000;
-  });
-  if (hasExpiringSoon) return 'expiring';
-  return 'healthy';
+function setStatus(text) {
+  $('#footer-status').textContent = text;
 }
 
-// ========== 状态 ==========
-
-let currentTab = null;
-
-// ========== 初始化 ==========
+// ===== Init =====
 
 async function init() {
-  const loggedIn = await isLoggedIn();
-  if (loggedIn) {
-    await showMainView();
+  if (await isLoggedIn()) {
+    await showMain();
   } else {
-    showLoginView();
+    showLogin();
   }
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  currentTab = tab;
-  await loadCurrentDomain();
+  setupTabs();
+  setupCurrentPage();
 }
 
-function showLoginView() {
+function showLogin() {
   $('#login-view').style.display = 'block';
   $('#main-view').style.display = 'none';
+  setupLogin();
 }
 
-async function showMainView() {
+async function showMain() {
   $('#login-view').style.display = 'none';
   $('#main-view').style.display = 'block';
-
-  // 自动从服务器同步域名列表
-  await syncDomainsFromServer();
-
-  await loadDomains();
-  await loadTargets();
-  await loadLastSyncTime();
+  await syncServerDomains();
+  await Promise.all([loadTargets(), loadDomains(), loadCookies()]);
+  setStatus('就绪');
 }
 
-// ========== 自动同步服务器域名 ==========
+// ===== Login =====
 
-async function syncDomainsFromServer() {
-  try {
-    const serverDomains = await getTrackingDomains();
-    const localDomains = await getSyncedDomains();
-    const merged = [...new Set([...localDomains, ...serverDomains])];
-    await setSyncedDomains(merged);
-  } catch {
-    // 静默失败
-  }
+function setupLogin() {
+  $('#login-btn').addEventListener('click', handleLogin);
+  $('#password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') handleLogin();
+  });
 }
 
-// ========== 登录 ==========
-
-$('#login-btn').addEventListener('click', async () => {
+async function handleLogin() {
   const email = $('#email').value.trim();
   const password = $('#password').value.trim();
-
   if (!email || !password) {
     $('#login-error').textContent = '请输入邮箱和密码';
     return;
@@ -101,311 +70,368 @@ $('#login-btn').addEventListener('click', async () => {
 
   const btn = $('#login-btn');
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> 登录中...';
+  btn.innerHTML = '<span class="spinner"></span>';
   $('#login-error').textContent = '';
 
   try {
     const data = await login(email, password);
     await setToken(data.token);
-    await showMainView();
+    await showMain();
   } catch (e) {
     $('#login-error').textContent = e.message;
-  } finally {
     btn.disabled = false;
     btn.textContent = '登录';
   }
-});
-
-// Enter 键登录
-$('#password').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') $('#login-btn').click();
-});
-
-// ========== 当前域名 ==========
-
-async function loadCurrentDomain() {
-  const el = $('#current-domain');
-  if (!currentTab?.url) {
-    el.style.display = 'none';
-    return;
-  }
-
-  try {
-    const url = new URL(currentTab.url);
-    const domain = url.hostname;
-
-    // 跳过 chrome:// 和扩展页面
-    if (url.protocol === 'chrome:' || url.protocol === 'chrome-extension:') {
-      el.style.display = 'none';
-      return;
-    }
-
-    $('#domain-name').textContent = domain;
-
-    const domains = await getSyncedDomains();
-    const isSynced = domains.includes(domain);
-
-    if (isSynced) {
-      $('#domain-status').textContent = '已监控';
-      $('#domain-status').className = 'domain-status status-ok';
-      $('#sync-current-btn').textContent = '同步 Cookie';
-      $('#sync-current-btn').onclick = () => syncCurrent(domain);
-    } else {
-      $('#domain-status').textContent = '未监控';
-      $('#domain-status').className = 'domain-status';
-      $('#sync-current-btn').textContent = '+ 添加监控';
-      $('#sync-current-btn').onclick = () => addDomain(domain);
-    }
-
-    el.style.display = 'flex';
-  } catch {
-    el.style.display = 'none';
-  }
 }
 
-async function syncCurrent(domain) {
-  const btn = $('#sync-current-btn');
+// ===== Tabs =====
+
+function setupTabs() {
+  $$('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      $$('.tab').forEach(t => t.classList.remove('active'));
+      $$('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      $(`.tab-content[data-tab="${tab.dataset.tab}"]`).classList.add('active');
+    });
+  });
+}
+
+// ===== Current Page =====
+
+function setupCurrentPage() {
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    if (!tab?.url) return;
+    try {
+      const url = new URL(tab.url);
+      if (url.protocol === 'chrome:' || url.protocol === 'chrome-extension:') return;
+
+      const domain = url.hostname;
+      const el = $('#current-page');
+      el.style.display = 'block';
+      $('#page-domain').textContent = domain;
+
+      getSyncedDomains().then(domains => {
+        if (domains.includes(domain)) {
+          $('#page-status').textContent = '已监控';
+          $('#page-status').className = 'page-card-status ok';
+          const btn = $('#page-action-btn');
+          btn.textContent = '同步 Cookie';
+          btn.onclick = () => syncDomain(domain, btn);
+        } else {
+          $('#page-status').textContent = '未监控';
+          $('#page-status').className = 'page-card-status';
+          const btn = $('#page-action-btn');
+          btn.textContent = '+ 添加';
+          btn.onclick = () => addDomain(domain);
+        }
+      });
+    } catch {}
+  });
+}
+
+async function syncDomain(domain, btn) {
   btn.disabled = true;
-  btn.textContent = '同步中...';
-
-  const result = await sendMessage({ type: 'SYNC_COOKIES', domain });
+  btn.textContent = '...';
+  const r = await sendMessage({ type: 'SYNC_COOKIES', domain });
   btn.disabled = false;
-
-  if (result?.success) {
-    btn.textContent = '✓ 已同步';
-    btn.classList.add('synced');
-  } else {
-    btn.textContent = '✗ 失败';
-    btn.classList.add('sync-error');
-  }
-
-  setTimeout(() => {
-    btn.textContent = '同步 Cookie';
-    btn.classList.remove('synced', 'sync-error');
-  }, 2500);
+  btn.textContent = r?.success ? '✓ 已同步' : '✗ 失败';
+  setTimeout(() => { btn.textContent = '同步 Cookie'; }, 2000);
+  loadDomains();
+  loadCookies();
 }
 
 async function addDomain(domain) {
-  const btn = $('#sync-current-btn');
-  btn.disabled = true;
-  btn.textContent = '添加中...';
-
   await addSyncedDomain(domain);
   await sendMessage({ type: 'ADD_DOMAIN', domain });
-  await loadCurrentDomain();
-  await loadDomains();
+  setupCurrentPage();
+  loadDomains();
+  loadCookies();
 }
 
-// ========== 域名列表 ==========
+// ===== Targets =====
+
+async function loadTargets() {
+  const el = $('#target-list');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+
+  try {
+    const [targets, apps] = await Promise.all([getTrackingTargets(), getApplications()]);
+    const appMap = new Map(apps.map(a => [a.id, a]));
+
+    if (targets.length === 0) {
+      el.innerHTML = `
+        <div class="empty">
+          <div class="empty-icon">🎯</div>
+          <div class="empty-title">暂无追踪目标</div>
+          <div class="empty-desc">在 Web 端添加求职记录后自动同步</div>
+        </div>`;
+      return;
+    }
+
+    const SL = { to_apply:'待投递', applied:'已投递', received:'已收到', under_review:'审核中', assessment:'测评中', interview:'面试中', final_interview:'终面', offer:'Offer', rejected:'已拒绝', withdrawn:'已撤回', unknown:'未知' };
+    const SC = { to_apply:'neutral', applied:'neutral', received:'success', under_review:'warning', assessment:'warning', interview:'warning', final_interview:'warning', offer:'success', rejected:'danger', withdrawn:'neutral', unknown:'neutral' };
+    const LL = { valid:'正常', expired:'已过期', captcha_required:'需验证', mfa_required:'需验证', blocked:'被阻止', unknown:'未知' };
+    const LC = { valid:'success', expired:'danger', captcha_required:'warning', mfa_required:'warning', blocked:'danger', unknown:'neutral' };
+
+    el.innerHTML = targets.map(t => {
+      const app = appMap.get(t.application_id);
+      const companyName = app?.company_name || t.domain;
+      const jobTitle = app?.job_title || '';
+      const s = t.current_status || 'unknown';
+      const l = t.login_state || 'unknown';
+      return `
+        <div class="list-item" data-url="${t.status_url}">
+          <div class="list-item-info">
+            <div class="list-item-title">${companyName}</div>
+            <div class="list-item-sub">
+              ${jobTitle ? `<span>${jobTitle}</span><span>·</span>` : ''}
+              <span class="badge-sm badge-${SC[s]||'neutral'}"><span class="badge-dot"></span>${SL[s]||s}</span>
+              <span class="badge-sm badge-${LC[l]||'neutral'}"><span class="badge-dot"></span>${LL[l]||l}</span>
+            </div>
+            <div class="list-item-sub" style="margin-top:2px">
+              <span style="color:var(--text-muted)">${t.domain}</span>
+              ${t.last_checked_at ? `<span>· ${formatTime(Date.parse(t.last_checked_at))}</span>` : ''}
+            </div>
+          </div>
+          <div class="list-item-actions">
+            <button class="icon-btn check-btn" title="检查">▶</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    el.querySelectorAll('.list-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.icon-btn')) return;
+        const url = item.dataset.url;
+        if (url) chrome.tabs.create({ url });
+      });
+    });
+
+    el.querySelectorAll('.check-btn').forEach((btn, i) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        checkTarget(targets[i], btn);
+      });
+    });
+  } catch (e) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">加载失败</div><div class="empty-desc">${e.message}</div></div>`;
+  }
+}
+
+async function checkTarget(target, btn) {
+  btn.textContent = '...';
+  btn.disabled = true;
+  setStatus(`检查 ${target.domain}...`);
+
+  try {
+    const r = await sendMessage({ type: 'CHECK_TARGET', targetId: target.id });
+    if (r?.success) {
+      setStatus(`${target.domain}: ${r.message || '完成'}`);
+    } else {
+      setStatus(`${target.domain}: ${r?.error || '失败'}`);
+    }
+  } catch (e) {
+    setStatus(`检查失败: ${e.message}`);
+  }
+
+  btn.textContent = '▶';
+  btn.disabled = false;
+  setTimeout(() => setStatus('就绪'), 5000);
+}
+
+// ===== Domains =====
 
 async function loadDomains() {
   const domains = await getSyncedDomains();
   const times = (await chrome.storage.local.get('last_sync_times')).last_sync_times || {};
 
+  // 从服务器获取追踪目标和应用，关联域名
+  let targets = [], apps = [];
+  try {
+    [targets, apps] = await Promise.all([getTrackingTargets(), getApplications()]);
+  } catch {}
+  const appMap = new Map(apps.map(a => [a.id, a]));
+
+  $('#domain-count').textContent = `${domains.length} 个域名`;
+  const el = $('#domain-list');
+
   if (domains.length === 0) {
-    $('#domain-list').innerHTML = `
-      <div class="empty-state">
+    el.innerHTML = `
+      <div class="empty">
         <div class="empty-icon">📡</div>
-        <div>暂无监控域名</div>
-        <div class="empty-hint">访问招聘网站后点击「添加监控」</div>
+        <div class="empty-title">暂无监控域名</div>
+        <div class="empty-desc">访问招聘网站后点击「添加」</div>
       </div>`;
     return;
   }
 
-  $('#domain-list').innerHTML = domains.map(d => {
-    const lastSync = times[d];
-    const syncLabel = lastSync ? formatTime(lastSync) : '未同步';
+  el.innerHTML = domains.map(d => {
+    const domainTargets = targets.filter(t => t.domain === d);
+    const companies = [...new Set(domainTargets.map(t => {
+      const app = appMap.get(t.application_id);
+      return app?.company_name || null;
+    }).filter(Boolean))];
+
+    const loginStates = domainTargets.map(t => t.login_state || 'unknown');
+    const hasExpired = loginStates.some(s => s === 'expired');
+    const allValid = loginStates.every(s => s === 'valid');
+    const badgeClass = hasExpired ? 'danger' : allValid ? 'success' : 'neutral';
+    const badgeText = hasExpired ? '有已过期' : allValid ? '正常' : `${domainTargets.length} 个目标`;
 
     return `
-      <div class="domain-item" data-domain="${d}">
-        <div class="domain-item-info">
-          <span class="domain-item-name">${d}</span>
-          <span class="domain-item-sync">上次同步: ${syncLabel}</span>
+    <div class="list-item" data-domain="${d}">
+      <div class="list-item-info">
+        <div class="list-item-title">${d}</div>
+        <div class="list-item-sub">
+          ${companies.length > 0
+            ? `<span>${companies.slice(0, 2).join('、')}${companies.length > 2 ? ' 等' : ''}</span><span>·</span>`
+            : ''}
+          <span class="badge-sm badge-${badgeClass}"><span class="badge-dot"></span>${badgeText}</span>
+          <span>·</span>
+          <span>${times[d] ? formatTime(times[d]) : '未同步'}</span>
         </div>
-        <div class="domain-item-actions">
-          <button class="domain-item-btn sync-btn" title="同步">↻</button>
-          <button class="domain-item-btn remove-btn" title="移除">✕</button>
+      </div>
+      <div class="list-item-actions">
+        <button class="icon-btn sync-btn" title="同步">↻</button>
+        <button class="icon-btn danger remove-btn" title="移除">×</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.sync-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const d = btn.closest('.list-item').dataset.domain;
+      btn.classList.add('spinning');
+      await sendMessage({ type: 'SYNC_COOKIES', domain: d });
+      btn.classList.remove('spinning');
+      loadDomains();
+      loadCookies();
+    });
+  });
+
+  el.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const d = btn.closest('.list-item').dataset.domain;
+      await removeSyncedDomain(d);
+      loadDomains();
+      loadCookies();
+    });
+  });
+}
+
+// ===== Cookies =====
+
+async function loadCookies() {
+  const el = $('#cookie-info');
+  const domains = await getSyncedDomains();
+
+  if (domains.length === 0) {
+    el.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">🍪</div>
+        <div class="empty-title">暂无 Cookie</div>
+        <div class="empty-desc">添加监控域名后自动同步 Cookie</div>
+      </div>`;
+    return;
+  }
+
+  const results = await Promise.all(domains.map(async d => {
+    try {
+      const cookies = await chrome.cookies.getAll({ domain: d });
+      return { domain: d, count: cookies.length, cookies };
+    } catch {
+      return { domain: d, count: 0, cookies: [] };
+    }
+  }));
+
+  el.innerHTML = results.map(r => {
+    const now = Date.now();
+    const healthy = r.cookies.filter(c => !c.expirationDate || c.expirationDate * 1000 > now).length;
+    const total = r.count || 1;
+    const pct = Math.round((healthy / total) * 100);
+    const healthClass = pct > 80 ? 'filled' : pct > 40 ? 'warning' : 'danger';
+
+    return `
+      <div class="cookie-item">
+        <div class="cookie-item-header">
+          <span class="cookie-item-domain">${r.domain}</span>
+          <span class="cookie-count">${r.count} 个 Cookie</span>
+        </div>
+        <div class="cookie-health">
+          <div class="health-bar ${healthClass}" style="width:${pct}%"></div>
+          <div class="health-bar" style="width:${100-pct}%"></div>
         </div>
       </div>`;
   }).join('');
-
-  // 绑定事件
-  $('#domain-list').querySelectorAll('.sync-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const domain = btn.closest('.domain-item').dataset.domain;
-      btn.classList.add('spinning');
-      await sendMessage({ type: 'SYNC_COOKIES', domain });
-      btn.classList.remove('spinning');
-      btn.textContent = '✓';
-      setTimeout(() => { btn.textContent = '↻'; }, 1500);
-      await loadDomains();
-    });
-  });
-
-  $('#domain-list').querySelectorAll('.remove-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const domain = btn.closest('.domain-item').dataset.domain;
-      if (confirm(`确定移除 ${domain}？`)) {
-        await removeSyncedDomain(domain);
-        await loadDomains();
-      }
-    });
-  });
 }
 
-// ========== 追踪目标 ==========
+// ===== Sync Server Domains =====
 
-async function loadTargets() {
-  const el = $('#target-list');
-  el.innerHTML = '<div class="loading"><span class="spinner"></span> 加载中...</div>';
-
+async function syncServerDomains() {
   try {
-    const targets = await getTrackingTargets();
-    $('#target-count').textContent = targets.length;
-
-    if (targets.length === 0) {
-      el.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🎯</div>
-          <div>暂无追踪目标</div>
-          <div class="empty-hint">在 Web 端添加求职记录后自动同步</div>
-        </div>`;
-      return;
-    }
-
-    const statusLabels = {
-      to_apply: '待投递', applied: '已投递', received: '已收到',
-      under_review: '审核中', assessment: '测评中', interview: '面试中',
-      final_interview: '终面中', offer: '已 Offer', rejected: '已拒绝',
-      withdrawn: '已撤回', unknown: '未知',
-    };
-
-    const statusColors = {
-      to_apply: '#78716c', applied: '#2563eb', received: '#7c3aed',
-      under_review: '#d97706', assessment: '#d97706', interview: '#ea580c',
-      final_interview: '#ea580c', offer: '#16a34a', rejected: '#dc2626',
-      withdrawn: '#9ca3af', unknown: '#9ca3af',
-    };
-
-    const loginLabels = {
-      valid: '正常', expired: '已过期', captcha_required: '需验证',
-      mfa_required: '需验证', blocked: '被阻止', unknown: '未知',
-    };
-
-    const loginDot = {
-      valid: '#16a34a', expired: '#dc2626', captcha_required: '#f59e0b',
-      mfa_required: '#f59e0b', blocked: '#dc2626', unknown: '#9ca3af',
-    };
-
-    el.innerHTML = targets.map(t => {
-      const status = t.current_status || 'unknown';
-      const login = t.login_state || 'unknown';
-      const color = statusColors[status] || '#9ca3af';
-
-      return `
-        <div class="target-item" data-url="${t.status_url}">
-          <div class="target-info">
-            <div class="target-company">${t.domain}</div>
-            <div class="target-meta">
-              <span class="target-status" style="color:${color}">${statusLabels[status] || status}</span>
-              ${t.last_checked_at ? `<span class="target-time">${formatTime(Date.parse(t.last_checked_at))}</span>` : ''}
-            </div>
-          </div>
-          <div class="target-login-badge">
-            <span class="login-dot" style="background:${loginDot[login] || '#9ca3af'}"></span>
-            ${loginLabels[login] || login}
-          </div>
-        </div>`;
-    }).join('');
-
-    el.querySelectorAll('.target-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const url = item.dataset.url;
-        if (url) chrome.tabs.create({ url });
-      });
-    });
-  } catch (e) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div>加载失败: ${e.message}</div></div>`;
-  }
+    const serverDomains = await getTrackingDomains();
+    const localDomains = await getSyncedDomains();
+    const merged = [...new Set([...localDomains, ...serverDomains])];
+    await setSyncedDomains(merged);
+  } catch {}
 }
 
-// ========== 同步全部 ==========
+// ===== Sync All =====
 
 $('#sync-all-btn').addEventListener('click', async () => {
   const btn = $('#sync-all-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>';
-
+  btn.classList.add('spinning');
+  setStatus('同步中...');
   await sendMessage({ type: 'SYNC_ALL' });
-  btn.disabled = false;
-  btn.textContent = '↻';
-  await loadDomains();
-  await loadLastSyncTime();
+  btn.classList.remove('spinning');
+  setStatus('同步完成');
+  await Promise.all([loadDomains(), loadCookies()]);
+  setTimeout(() => setStatus('就绪'), 3000);
 });
 
-// ========== 最后同步时间 ==========
-
-async function loadLastSyncTime() {
-  const result = await chrome.storage.local.get('last_sync_times');
-  const times = result.last_sync_times || {};
-  const values = Object.values(times);
-
-  if (values.length === 0) {
-    $('#last-sync-time').textContent = '尚未同步';
-    return;
-  }
-
-  const latest = Math.max(...values);
-  $('#last-sync-time').textContent = `最后同步: ${formatTime(latest)}`;
-}
-
-// ========== 添加域名弹窗 ==========
-
-$('#add-domain-btn').addEventListener('click', () => {
-  $('#add-domain-modal').style.display = 'flex';
-  $('#new-domain-input').value = '';
-  $('#new-domain-input').focus();
-});
-
-$('#close-modal-btn').addEventListener('click', () => {
-  $('#add-domain-modal').style.display = 'none';
-});
-
-$('#add-domain-modal').addEventListener('click', (e) => {
-  if (e.target.id === 'add-domain-modal') {
-    $('#add-domain-modal').style.display = 'none';
-  }
-});
-
-$('#confirm-add-btn').addEventListener('click', async () => {
-  const domain = $('#new-domain-input').value.trim();
-  if (!domain) return;
-
-  const btn = $('#confirm-add-btn');
-  btn.disabled = true;
-  btn.textContent = '添加中...';
-
-  await addSyncedDomain(domain);
-  await sendMessage({ type: 'ADD_DOMAIN', domain });
-  $('#add-domain-modal').style.display = 'none';
-  btn.disabled = false;
-  btn.textContent = '添加';
-  await loadDomains();
-});
-
-$('#new-domain-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') $('#confirm-add-btn').click();
-  if (e.key === 'Escape') $('#add-domain-modal').style.display = 'none';
-});
-
-// ========== 设置 ==========
+// ===== Settings =====
 
 $('#settings-btn').addEventListener('click', () => {
   chrome.runtime.openOptionsPage();
 });
 
-// ========== 启动 ==========
+// ===== Modal =====
+
+$('#add-domain-btn').addEventListener('click', () => {
+  $('#modal-overlay').style.display = 'flex';
+  const input = $('#modal-domain-input');
+  input.value = '';
+  input.focus();
+});
+
+function closeModal() {
+  $('#modal-overlay').style.display = 'none';
+}
+
+$('#modal-close').addEventListener('click', closeModal);
+$('#modal-cancel').addEventListener('click', closeModal);
+$('#modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+$('#modal-confirm').addEventListener('click', async () => {
+  const domain = $('#modal-domain-input').value.trim();
+  if (!domain) return;
+  await addSyncedDomain(domain);
+  await sendMessage({ type: 'ADD_DOMAIN', domain });
+  closeModal();
+  loadDomains();
+  loadCookies();
+});
+
+$('#modal-domain-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('#modal-confirm').click();
+  if (e.key === 'Escape') closeModal();
+});
+
+// ===== Start =====
 
 init();
