@@ -76,7 +76,7 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
           console.log(`[${new Date().toISOString()}] [worker] Adding cookie:`, JSON.stringify(cookie));
           await context.addCookies([cookie]);
         } catch (e) {
-          console.error(`[${new Date().toISOString()}] [worker] Failed to add cookie "${cookie.name}":`, e.message);
+          console.error(`[${new Date().toISOString()}] [worker] Failed to add cookie "${cookie.name}":`, String(e));
         }
       }
       console.log(`[${new Date().toISOString()}] [worker] Cookie injection complete`);
