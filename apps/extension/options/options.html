@@ -40,6 +40,11 @@
 
     <div class="card">
       <h2>同步设置</h2>
+      <div class="form-group">
+        <label for="sync-interval">Cookie 同步间隔（分钟）</label>
+        <input type="number" id="sync-interval" min="1" max="60" value="5" />
+        <div class="hint">Cookie 变化时会立即同步，此设置控制定时全量同步的间隔</div>
+      </div>
       <label class="checkbox-label">
         <input type="checkbox" id="auto-sync" checked />
         <span>Cookie 变化时自动同步</span>

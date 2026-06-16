@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   SYNCED_DOMAINS: 'synced_domains',
   CACHED_TARGETS: 'cached_targets',
   LAST_SYNC: 'last_sync_times',
+  SYNC_INTERVAL: 'sync_interval',
 };
 
 export async function getServerUrl() {
@@ -70,4 +71,13 @@ export async function setLastSyncTime(domain, time) {
   const times = await getLastSyncTimes();
   times[domain] = time;
   await chrome.storage.local.set({ [STORAGE_KEYS.LAST_SYNC]: times });
+}
+
+export async function getSyncInterval() {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.SYNC_INTERVAL);
+  return result[STORAGE_KEYS.SYNC_INTERVAL] || 5 * 60 * 1000;
+}
+
+export async function setSyncInterval(ms) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.SYNC_INTERVAL]: ms });
 }

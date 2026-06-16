@@ -55,6 +55,10 @@ export async function updateTrackingCookies(targetId, cookies) {
   return api.put(`/api/tracking/${targetId}/cookies`, { cookies });
 }
 
+export async function updateTrackingLoginState(targetId, loginState) {
+  return api.put(`/api/tracking/${targetId}/login-state`, { login_state: loginState });
+}
+
 export async function createTrackingTarget(data) {
   return api.post('/api/tracking', data);
 }

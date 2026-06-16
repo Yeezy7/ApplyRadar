@@ -171,6 +171,29 @@ app.put('/:id/cookies', async (c) => {
   return c.json({ code: 0, msg: 'Cookie 已更新' });
 });
 
+// Update login state only
+app.put('/:id/login-state', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const body = await c.req.json();
+
+  const existing = db.prepare('SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?').get(id, userId);
+  if (!existing) {
+    return c.json({ code: 404, msg: '追踪目标不存在' }, 404);
+  }
+
+  const { login_state } = body;
+  if (!login_state) {
+    return c.json({ code: 400, msg: 'login_state 不能为空' }, 400);
+  }
+
+  db.prepare(
+    "UPDATE tracking_targets SET login_state = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+  ).run(login_state, id, userId);
+
+  return c.json({ code: 0, msg: '登录状态已更新' });
+});
+
 // List tracking runs for a target
 app.get('/:id/runs', (c) => {
   const userId = c.get('userId');

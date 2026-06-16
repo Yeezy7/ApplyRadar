@@ -2,6 +2,7 @@ import {
   getServerUrl, setServerUrl,
   getToken, setToken,
   getSyncedDomains, addSyncedDomain, removeSyncedDomain,
+  getSyncInterval, setSyncInterval,
 } from '../lib/storage.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -19,9 +20,11 @@ function sendMessage(msg) {
 async function init() {
   const serverUrl = await getServerUrl();
   const token = await getToken();
+  const syncInterval = await getSyncInterval();
 
   $('#server-url').value = serverUrl;
   $('#auth-token').value = token;
+  $('#sync-interval').value = syncInterval / 60000;
 
   await loadDomains();
   bindEvents();
@@ -60,10 +63,12 @@ function bindEvents() {
   $('#save-btn').addEventListener('click', async () => {
     const url = $('#server-url').value.trim();
     const token = $('#auth-token').value.trim();
+    const interval = parseInt($('#sync-interval').value) || 5;
 
     try {
       if (url) await setServerUrl(url);
       await setToken(token);
+      await setSyncInterval(interval * 60000);
       showStatus('save-status', '✓ 已保存', 'success');
     } catch (e) {
       showStatus('save-status', e.message, 'error');

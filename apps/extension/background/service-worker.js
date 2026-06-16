@@ -6,16 +6,18 @@ import {
   isLoggedIn,
   getServerUrl,
   getToken,
+  getSyncInterval,
 } from '../lib/storage.js';
 import {
   getTrackingTargets,
   updateTrackingCookies,
+  updateTrackingLoginState,
   createTrackingTarget,
   api as serverApi,
 } from '../lib/api.js';
 
-// Cookie 同步间隔（5 分钟）
-const SYNC_INTERVAL = 5 * 60 * 1000;
+// Cookie 同步间隔（默认 5 分钟，可通过设置修改）
+let SYNC_INTERVAL = 5 * 60 * 1000;
 
 // Session 检查间隔（1 小时）
 const SESSION_CHECK_INTERVAL = 60 * 60 * 1000;
@@ -30,19 +32,26 @@ async function syncCookiesForDomain(domain) {
     const targets = await getTrackingTargets(domain);
     if (targets.length === 0) return;
 
-    // 打印前 3 个 cookie 用于调试
-    console.log(`[ApplyRadar] Syncing ${cookies.length} cookies for ${domain}:`, cookies.slice(0, 3).map(c => ({
-      name: c.name,
-      domain: c.domain,
-      hostOnly: c.hostOnly,
-      path: c.path,
-    })));
-
     const cookieJson = JSON.stringify(cookies);
 
+    // 检查 Cookie 是否过期
+    const now = Date.now();
+    const hasExpired = cookies.some(c => c.expirationDate && c.expirationDate * 1000 < now);
+    const loginState = hasExpired ? 'expired' : 'valid';
+
+    // 同步 Cookie 到所有该域名的追踪目标
     for (const target of targets) {
       await updateTrackingCookies(target.id, cookieJson);
+      // 只更新登录状态，不触发完整检查
+      await updateTrackingLoginState(target.id, loginState);
     }
+
+    await setLastSyncTime(domain, Date.now());
+    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}, login: ${loginState}`);
+  } catch (e) {
+    console.error(`[ApplyRadar] Failed to sync cookies for ${domain}:`, e);
+  }
+}
 
     await setLastSyncTime(domain, Date.now());
 
@@ -145,8 +154,11 @@ function showNotification(title, message, targetId) {
 
 // ========== 初始化 ==========
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   console.log('[ApplyRadar] Extension installed');
+
+  // 读取用户设置的同步间隔
+  SYNC_INTERVAL = await getSyncInterval();
 
   // 设置定时任务
   chrome.alarms.create('sync-cookies', { periodInMinutes: SYNC_INTERVAL / 60000 });
