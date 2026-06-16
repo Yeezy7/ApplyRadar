@@ -23,6 +23,18 @@ export async function launchBrowser(targetId: string): Promise<BrowserContext> {
   return context;
 }
 
+export async function injectCookies(context: BrowserContext, cookiesJson: string): Promise<void> {
+  if (!cookiesJson) return;
+  try {
+    const cookies = JSON.parse(cookiesJson);
+    if (Array.isArray(cookies) && cookies.length > 0) {
+      await context.addCookies(cookies);
+    }
+  } catch {
+    // ignore invalid cookies
+  }
+}
+
 export async function getPage(ctx: BrowserContext, url: string): Promise<Page> {
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "load", timeout: 60000 });

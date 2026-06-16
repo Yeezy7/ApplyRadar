@@ -171,6 +171,13 @@ export function initDatabase() {
   `);
 
   console.log('Database initialized');
+
+  // Migration: add session_cookies column if missing
+  const columns = db.prepare("PRAGMA table_info(tracking_targets)").all() as any[];
+  if (!columns.some((c: any) => c.name === 'session_cookies')) {
+    db.exec("ALTER TABLE tracking_targets ADD COLUMN session_cookies TEXT");
+    console.log('Migration: added session_cookies column');
+  }
 }
 
 export default db;

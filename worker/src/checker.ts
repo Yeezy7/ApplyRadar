@@ -1,4 +1,4 @@
-import { launchBrowser, getPage, closeBrowser } from "./browser.js";
+import { launchBrowser, getPage, closeBrowser, injectCookies } from "./browser.js";
 import { extractPageText, computeHash, detectLoginState, getPageTitle } from "./extractor.js";
 
 export interface CheckTarget {
@@ -8,6 +8,7 @@ export interface CheckTarget {
   status_url: string;
   ats_type: string;
   last_text_hash: string | null;
+  session_cookies: string | null;
 }
 
 export interface CheckResult {
@@ -28,6 +29,12 @@ export async function checkTarget(target: CheckTarget): Promise<CheckResult> {
 
   try {
     context = await launchBrowser(target.id);
+
+    // 注入用户提供的 cookies
+    if (target.session_cookies) {
+      await injectCookies(context, target.session_cookies);
+    }
+
     const page = await getPage(context, target.status_url);
 
     // Wait for page to stabilize

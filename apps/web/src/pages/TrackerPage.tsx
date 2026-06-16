@@ -11,6 +11,7 @@ import {
   listTrackingTargets,
   listTrackingRuns,
   triggerCheckTarget,
+  updateTrackingCookies,
 } from "../services/trackingService";
 import { listApplications } from "../services/applicationService";
 import {
@@ -45,6 +46,9 @@ export default function TrackerPage() {
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null);
   const [runningAutoCheck, setRunningAutoCheck] = useState(false);
   const [sendingReport, setSendingReport] = useState(false);
+  const [editingCookies, setEditingCookies] = useState<string | null>(null);
+  const [cookieInput, setCookieInput] = useState("");
+  const [savingCookies, setSavingCookies] = useState(false);
 
   const loadTargets = useCallback(async () => {
     setLoading(true);
@@ -193,6 +197,20 @@ export default function TrackerPage() {
       setSummaryResult({ success: false, message: `发送失败: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setSendingReport(false);
+    }
+  };
+
+  const handleSaveCookies = async (targetId: string) => {
+    setSavingCookies(true);
+    try {
+      await updateTrackingCookies(targetId, cookieInput);
+      setEditingCookies(null);
+      setCookieInput("");
+      await loadTargets();
+    } catch (e) {
+      alert(`保存失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingCookies(false);
     }
   };
 
@@ -449,7 +467,39 @@ export default function TrackerPage() {
                             )}
                             {isChecking ? "检查中" : "检查"}
                           </button>
+                          {["expired", "blocked"].includes(target.login_state) && (
+                            <button
+                              onClick={() => {
+                                setEditingCookies(editingCookies === target.id ? null : target.id);
+                                setCookieInput("");
+                              }}
+                              className="flex items-center gap-1 px-2 py-1.5 text-xs text-amber-600 bg-amber-50 rounded-md hover:bg-amber-100 transition-colors"
+                            >
+                              {editingCookies === target.id ? "取消" : "设置 Cookie"}
+                            </button>
+                          )}
                         </div>
+                        {editingCookies === target.id && (
+                          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <div className="mb-2 text-xs text-amber-700">
+                              在浏览器登录目标网站后，复制 Cookie 粘贴到下方。支持 Netscape 格式或 JSON 数组格式。
+                            </div>
+                            <textarea
+                              value={cookieInput}
+                              onChange={(e) => setCookieInput(e.target.value)}
+                              placeholder='粘贴 Cookie，例如：[{"name":"token","value":"xxx","domain":".example.com","path":"/"}]'
+                              className="w-full rounded border border-amber-300 bg-white px-2 py-1.5 text-xs font-mono resize-none focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              rows={4}
+                            />
+                            <button
+                              onClick={() => handleSaveCookies(target.id)}
+                              disabled={!cookieInput.trim() || savingCookies}
+                              className="mt-2 px-3 py-1.5 text-xs font-medium text-white bg-amber-600 rounded hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                            >
+                              {savingCookies ? "保存中..." : "保存 Cookie"}
+                            </button>
+                          </div>
+                        )}
                         {result && (
                           <div className={`text-xs mt-1 ${result.success ? "text-green-600" : "text-red-600"}`}>
                             {result.message}

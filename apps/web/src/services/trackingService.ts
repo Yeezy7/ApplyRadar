@@ -53,3 +53,10 @@ export async function triggerCheckTarget(
     `/api/auto-check/check/${targetId}`,
   );
 }
+
+export async function updateTrackingCookies(
+  targetId: string,
+  cookies: string,
+): Promise<void> {
+  await api.put(`/api/tracking/${targetId}/cookies`, { cookies });
+}

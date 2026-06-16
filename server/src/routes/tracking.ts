@@ -135,6 +135,27 @@ app.delete('/:id', (c) => {
   return c.json({ code: 0, msg: '已删除' });
 });
 
+// Update session cookies for a target
+app.put('/:id/cookies', async (c) => {
+  const userId = c.get('userId');
+  const id = c.req.param('id');
+  const body = await c.req.json();
+
+  const existing = db.prepare('SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?').get(id, userId);
+  if (!existing) {
+    return c.json({ code: 404, msg: '追踪目标不存在' }, 404);
+  }
+
+  // cookies 可以是 JSON 字符串或对象
+  const cookies = typeof body.cookies === 'string' ? body.cookies : JSON.stringify(body.cookies || []);
+
+  db.prepare(
+    "UPDATE tracking_targets SET session_cookies = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
+  ).run(cookies, id, userId);
+
+  return c.json({ code: 0, msg: 'Cookie 已更新' });
+});
+
 // List tracking runs for a target
 app.get('/:id/runs', (c) => {
   const userId = c.get('userId');
