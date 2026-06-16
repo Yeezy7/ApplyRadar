@@ -30,7 +30,7 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
     if (!Array.isArray(raw) || raw.length === 0) return;
 
     // 打印前 3 个 cookie 的关键字段用于调试
-    console.log(`[worker] Received ${raw.length} cookies, sample:`, raw.slice(0, 3).map((c: any) => ({
+    console.log(`[${new Date().toISOString()}] [worker] Received ${raw.length} cookies, sample:`, raw.slice(0, 3).map((c: any) => ({
       name: c.name,
       domain: c.domain,
       hostOnly: c.hostOnly,
@@ -84,12 +84,12 @@ export async function injectCookies(context: BrowserContext, cookiesJson: string
 
     if (valid.length > 0) {
       await context.addCookies(valid);
-      console.log(`[worker] Injected ${valid.length}/${raw.length} cookies`);
+      console.log(`[${new Date().toISOString()}] [worker] Injected ${valid.length}/${raw.length} cookies`);
     } else {
-      console.warn(`[worker] No valid cookies to inject (of ${raw.length})`);
+      console.warn(`[${new Date().toISOString()}] [worker] No valid cookies to inject (of ${raw.length})`);
     }
   } catch (e) {
-    console.error('[worker] Failed to inject cookies:', e);
+    console.error(`[${new Date().toISOString()}] [worker] Failed to inject cookies:`, e);
   }
 }
 

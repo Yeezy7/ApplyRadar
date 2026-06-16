@@ -7,10 +7,12 @@ const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "2", 10);
 
-console.log("[worker] Starting ApplyRadar Worker...");
-console.log(`[worker] Redis: ${REDIS_URL}`);
-console.log(`[worker] Server: ${SERVER_URL}`);
-console.log(`[worker] Concurrency: ${CONCURRENCY}`);
+const ts = () => new Date().toISOString();
+
+console.log(`[${ts()}] [worker] Starting ApplyRadar Worker...`);
+console.log(`[${ts()}] [worker] Redis: ${REDIS_URL}`);
+console.log(`[${ts()}] [worker] Server: ${SERVER_URL}`);
+console.log(`[${ts()}] [worker] Concurrency: ${CONCURRENCY}`);
 
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
 
@@ -22,10 +24,10 @@ const worker = new Worker(
   "tracking-check",
   async (job) => {
     const target = job.data as CheckTarget;
-    console.log(`[worker] Checking target ${target.id}: ${target.status_url}`);
+    console.log(`[${ts()}] [worker] Checking target ${target.id}: ${target.status_url}`);
 
     const result = await checkTarget(target);
-    console.log(`[worker] Target ${target.id} result:`, {
+    console.log(`[${ts()}] [worker] Target ${target.id} result:`, {
       success: result.success,
       loginState: result.loginState,
       hasError: !!result.errorMessage,
@@ -53,10 +55,10 @@ const worker = new Worker(
       });
 
       if (!response.ok) {
-        console.error(`[worker] Failed to report result for ${target.id}:`, await response.text());
+        console.error(`[${ts()}] [worker] Failed to report result for ${target.id}:`, await response.text());
       }
     } catch (error) {
-      console.error(`[worker] Failed to report result for ${target.id}:`, error);
+      console.error(`[${ts()}] [worker] Failed to report result for ${target.id}:`, error);
     }
 
     return result;
@@ -72,33 +74,33 @@ const worker = new Worker(
 );
 
 worker.on("completed", (job, result) => {
-  console.log(`[worker] Job ${job.id} completed:`, result);
+  console.log(`[${ts()}] [worker] Job ${job.id} completed:`, result);
 });
 
 worker.on("failed", (job, error) => {
-  console.error(`[worker] Job ${job?.id} failed:`, error);
+  console.error(`[${ts()}] [worker] Job ${job?.id} failed:`, error);
 });
 
 worker.on("error", (error) => {
-  console.error("[worker] Worker error:", error);
+  console.error(`[${ts()}] [worker] Worker error:`, error);
 });
 
 // Handle graceful shutdown
 process.on("SIGINT", async () => {
-  console.log("[worker] Shutting down...");
+  console.log(`[${ts()}] [worker] Shutting down...`);
   await worker.close();
   await connection.quit();
   process.exit(0);
 });
 
 process.on("SIGTERM", async () => {
-  console.log("[worker] Shutting down...");
+  console.log(`[${ts()}] [worker] Shutting down...`);
   await worker.close();
   await connection.quit();
   process.exit(0);
 });
 
-console.log("[worker] Worker started, waiting for jobs...");
+console.log(`[${ts()}] [worker] Worker started, waiting for jobs...`);
 
 // Export queue for external use
 export { checkQueue };
