@@ -12,6 +12,7 @@ import {
   Laptop,
   ChevronsLeft,
   Send,
+  FileText,
 } from "lucide-react";
 import ApplicationsPage from "./pages/ApplicationsPage";
 import ApplicationDetailPage from "./pages/ApplicationDetailPage";
@@ -21,6 +22,7 @@ import SettingsPage from "./pages/SettingsPage";
 import DashboardPage from "./pages/DashboardPage";
 import KanbanPage from "./pages/KanbanPage";
 import PushPage from "./pages/PushPage";
+import ResumePage from "./pages/ResumePage";
 import { applicationService, trackerService, reminderService, notificationService } from "./services";
 import ErrorBoundary from "./components/ErrorBoundary";
 
@@ -44,7 +46,7 @@ const loadSidebarWidth = (): number => {
   return DEFAULT_SIDEBAR_WIDTH;
 };
 
-type Page = "dashboard" | "applications" | "kanban" | "tracker" | "reminders" | "push" | "settings";
+type Page = "dashboard" | "applications" | "kanban" | "tracker" | "reminders" | "push" | "resume" | "settings";
 
 interface NavCounts {
   applications: number;
@@ -79,6 +81,7 @@ const navItems: {
   { key: "tracker", label: "状态监控", icon: Activity, countKey: "tracker" },
   { key: "reminders", label: "提醒", icon: Bell, countKey: "reminders" },
   { key: "push", label: "推送", icon: Send },
+  { key: "resume", label: "简历", icon: FileText },
   { key: "settings", label: "设置", icon: Settings },
 ];
 
@@ -316,6 +319,7 @@ export default function App() {
                 {page === "tracker" && <TrackerPage />}
                 {page === "reminders" && <RemindersPage />}
                 {page === "push" && <PushPage />}
+                {page === "resume" && <ResumePage />}
                 {page === "settings" && <SettingsPage />}
               </>
             )}

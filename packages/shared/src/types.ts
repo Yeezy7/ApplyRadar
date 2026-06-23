@@ -198,6 +198,92 @@ export interface AIParseOutput {
   total_tokens?: number;
 }
 
+// === Resume ===
+
+export interface EducationEntry {
+  school: string;
+  degree: string;
+  major: string;
+  start_date?: string;
+  end_date?: string;
+  gpa?: string;
+}
+
+export interface WorkExperienceEntry {
+  company: string;
+  title: string;
+  start_date?: string;
+  end_date?: string;
+  description?: string;
+}
+
+export interface ProjectEntry {
+  name: string;
+  role?: string;
+  start_date?: string;
+  end_date?: string;
+  description?: string;
+  tech_stack?: string[];
+}
+
+export interface CertificationEntry {
+  name: string;
+  date?: string;
+  issuer?: string;
+}
+
+export interface Resume {
+  id: string;
+  user_id: string;
+  name: string;
+  is_default: number;
+  full_name?: string;
+  phone?: string;
+  email?: string;
+  gender?: string;
+  birth_date?: string;
+  hometown?: string;
+  political_status?: string;
+  target_position?: string;
+  target_city?: string;
+  expected_salary?: string;
+  job_type?: string;
+  education?: EducationEntry[];
+  work_experience?: WorkExperienceEntry[];
+  projects?: ProjectEntry[];
+  skills?: string[];
+  certifications?: CertificationEntry[];
+  summary?: string;
+  pdf_file_path?: string;
+  raw_text?: string;
+  parsed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeAttachment {
+  id: string;
+  resume_id: string;
+  file_name: string;
+  file_path: string;
+  file_size?: number;
+  mime_type: string;
+  uploaded_at: string;
+}
+
+export interface FormTemplate {
+  id: string;
+  user_id: string;
+  domain: string;
+  site_name?: string;
+  field_mappings: Record<string, string>;
+  is_ai_generated: number;
+  confidence?: number;
+  last_used_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // === Site Adapter ===
 
 export interface PagePayload {

@@ -7,6 +7,8 @@ import {
   getServerUrl,
   getToken,
   getSyncInterval,
+  getCachedResume,
+  setCachedResume,
 } from '../lib/storage.js';
 import {
   getTrackingTargets,
@@ -248,6 +250,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await syncCookiesForDomain(domain);
 
         sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'GET_RESUME') {
+    (async () => {
+      try {
+        // 先检查缓存
+        const cached = await getCachedResume();
+        if (cached) {
+          sendResponse({ success: true, resume: cached });
+          return;
+        }
+
+        // 从服务器获取
+        const serverUrl = await getServerUrl();
+        const token = await getToken();
+
+        if (!serverUrl || !token) {
+          sendResponse({ success: false, error: '未登录' });
+          return;
+        }
+
+        const response = await fetch(`${serverUrl}/api/resumes/extension/default`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (!response.ok) {
+          sendResponse({ success: false, error: '获取简历失败' });
+          return;
+        }
+
+        const data = await response.json();
+        if (data.code === 0 && data.data) {
+          // 缓存简历数据
+          await setCachedResume(data.data);
+          sendResponse({ success: true, resume: data.data });
+        } else {
+          sendResponse({ success: false, error: data.msg || '获取简历失败' });
+        }
       } catch (e) {
         sendResponse({ success: false, error: e.message });
       }

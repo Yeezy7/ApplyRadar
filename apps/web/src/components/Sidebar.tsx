@@ -9,6 +9,7 @@ import {
   Radar,
   Menu,
   X,
+  FileText,
 } from "lucide-react";
 import { getUser } from "../stores/authStore";
 
@@ -19,6 +20,7 @@ export type Page =
   | "tracker"
   | "reminders"
   | "push"
+  | "resume"
   | "settings";
 
 interface NavItem {
@@ -43,6 +45,7 @@ const navItems: Omit<NavItem, "count">[] = [
   { key: "tracker", label: "状态监控", icon: Activity },
   { key: "reminders", label: "提醒", icon: Bell },
   { key: "push", label: "推送日志", icon: Send },
+  { key: "resume", label: "简历管理", icon: FileText },
   { key: "settings", label: "设置", icon: Settings },
 ];
 

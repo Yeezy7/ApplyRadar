@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   CACHED_TARGETS: 'cached_targets',
   LAST_SYNC: 'last_sync_times',
   SYNC_INTERVAL: 'sync_interval',
+  CACHED_RESUME: 'cached_resume',
 };
 
 export async function getServerUrl() {
@@ -80,4 +81,17 @@ export async function getSyncInterval() {
 
 export async function setSyncInterval(ms) {
   await chrome.storage.local.set({ [STORAGE_KEYS.SYNC_INTERVAL]: ms });
+}
+
+export async function getCachedResume() {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.CACHED_RESUME);
+  return result[STORAGE_KEYS.CACHED_RESUME] || null;
+}
+
+export async function setCachedResume(resume) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.CACHED_RESUME]: resume });
+}
+
+export async function clearCachedResume() {
+  await chrome.storage.local.remove(STORAGE_KEYS.CACHED_RESUME);
 }

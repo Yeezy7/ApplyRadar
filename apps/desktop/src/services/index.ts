@@ -9,3 +9,4 @@ export * as emailService from "./emailService";
 export * as pushLogService from "./pushLogService";
 export { confirmDelete } from "./dialogService";
 export * as backupService from "./backupService";
+export * as resumeService from "./resumeService";

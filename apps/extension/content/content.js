@@ -1,4 +1,4 @@
-// Content script: 检测求职相关页面，显示「添加追踪」按钮
+// Content script: 右侧抽屉面板 — 添加追踪 + 填写简历
 
 (function() {
   'use strict';
@@ -6,7 +6,8 @@
   const JOB_KEYWORDS = [
     '/deliver', '/application', '/status', '/myDeliver',
     '/myApplication', '/track', '/progress', '/interview',
-    '/offer', '/result', '/feedback', '/login',
+    '/offer', '/result', '/feedback', '/login', '/apply',
+    '/resume', '/profile', '/personal', '/info',
   ];
 
   const SITE_PATTERNS = [
@@ -18,16 +19,21 @@
     { domain: '51job.com', name: '前程无忧' },
     { domain: 'nowcoder.com', name: '牛客' },
     { domain: 'mokahr.com', name: '摩卡' },
-    { domain: 'cemc.com.cn', name: '测评平台' },
     { domain: 'bytedance.com', name: '字节跳动' },
     { domain: 'xiaomi.com', name: '小米' },
     { domain: 'huawei.com', name: '华为' },
     { domain: 'alibaba.com', name: '阿里巴巴' },
     { domain: 'tencent.com', name: '腾讯' },
+    { domain: '104.com.tw', name: '104人力银行' },
+    { domain: 'cakeresume.com', name: 'CakeResume' },
+    { domain: 'yourator.co', name: 'Yourator' },
   ];
 
-  let fabContainer = null;
-  let isExpanded = false;
+  let drawer = null;
+  let isDrawerOpen = false;
+  let activeTab = 'track';
+
+  // ========== 工具函数 ==========
 
   function isJobPage() {
     const url = window.location.href.toLowerCase();
@@ -48,34 +54,17 @@
   function extractPageInfo() {
     const title = document.title || '';
     const h1 = document.querySelector('h1')?.textContent?.trim() || '';
-
     let companyName = '';
     let jobTitle = '';
 
-    const companySelectors = [
-      '.company-name', '.company', '[class*="company"]',
-      '.employer', '.org-name', '.comp-name',
-    ];
-    for (const sel of companySelectors) {
+    for (const sel of ['.company-name', '.company', '[class*="company"]', '.employer']) {
       const el = document.querySelector(sel);
-      if (el && el.textContent.trim()) {
-        companyName = el.textContent.trim();
-        break;
-      }
+      if (el && el.textContent.trim()) { companyName = el.textContent.trim(); break; }
     }
-
-    const jobSelectors = [
-      '.job-name', '.job-title', '[class*="job-title"]',
-      '.position-name', '.role-title', '.job-name-text',
-    ];
-    for (const sel of jobSelectors) {
+    for (const sel of ['.job-name', '.job-title', '[class*="job-title"]', '.position-name']) {
       const el = document.querySelector(sel);
-      if (el && el.textContent.trim()) {
-        jobTitle = el.textContent.trim();
-        break;
-      }
+      if (el && el.textContent.trim()) { jobTitle = el.textContent.trim(); break; }
     }
-
     if (!companyName) companyName = title.split(/[-|–—]/)[0]?.trim() || title;
     if (!jobTitle) jobTitle = h1 || title;
 
@@ -88,138 +77,399 @@
     };
   }
 
-  function createFAB() {
-    if (fabContainer) return;
+  // ========== 表单识别 ==========
 
-    fabContainer = document.createElement('div');
-    fabContainer.id = 'applyradar-fab';
-    fabContainer.innerHTML = `
-      <div class="ar-fab-btn" title="ApplyRadar">
-        <svg class="ar-fab-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  const FIELD_MAP = {
+    full_name: { patterns: ['name', '姓名', '名字'], label: '姓名' },
+    phone: { patterns: ['phone', 'mobile', '手机', '电话'], label: '手机' },
+    email: { patterns: ['email', '邮箱', '邮件'], label: '邮箱' },
+    gender: { patterns: ['gender', 'sex', '性别'], label: '性别' },
+    birth_date: { patterns: ['birth', 'birthday', '出生', '年龄'], label: '出生日期' },
+    education: { patterns: ['education', 'degree', '学历'], label: '学历' },
+    school: { patterns: ['school', 'university', '学校', '院校'], label: '学校' },
+    major: { patterns: ['major', '专业'], label: '专业' },
+    work_company: { patterns: ['company', 'employer', '公司', '单位'], label: '公司' },
+    work_title: { patterns: ['title', 'position', '职位', '岗位'], label: '职位' },
+  };
+
+  function getLabelFor(element) {
+    if (element.id) {
+      const label = document.querySelector(`label[for="${element.id}"]`);
+      if (label) return label.textContent.trim();
+    }
+    const parentLabel = element.closest('label');
+    if (parentLabel) return parentLabel.textContent.trim();
+    const prev = element.previousElementSibling;
+    if (prev && ['LABEL', 'SPAN', 'DIV'].includes(prev.tagName)) {
+      return prev.textContent.trim();
+    }
+    return '';
+  }
+
+  function identifyField(element) {
+    const allAttrs = `${element.name || ''} ${element.id || ''} ${element.placeholder || ''} ${getLabelFor(element)}`.toLowerCase();
+    for (const [fieldName, config] of Object.entries(FIELD_MAP)) {
+      if (config.patterns.some(p => allAttrs.includes(p))) {
+        return { fieldName, label: config.label };
+      }
+    }
+    return null;
+  }
+
+  function getResumeValue(data, fieldName) {
+    if (data[fieldName]) return String(data[fieldName]);
+    if (fieldName === 'school' && data.education?.length > 0) return data.education[0].school;
+    if (fieldName === 'major' && data.education?.length > 0) return data.education[0].major;
+    if (fieldName === 'education' && data.education?.length > 0) return data.education[0].degree;
+    if (fieldName === 'work_company' && data.work_experience?.length > 0) return data.work_experience[0].company;
+    if (fieldName === 'work_title' && data.work_experience?.length > 0) return data.work_experience[0].title;
+    return null;
+  }
+
+  function fillElement(element, value) {
+    const tagName = element.tagName.toLowerCase();
+    const type = (element.type || 'text').toLowerCase();
+    const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    const nativeTextAreaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+
+    if (tagName === 'select') {
+      const opt = Array.from(element.options).find(o =>
+        o.value === value || o.textContent.trim() === value ||
+        o.value.toLowerCase().includes(value.toLowerCase()) ||
+        o.textContent.toLowerCase().includes(value.toLowerCase())
+      );
+      if (opt) element.value = opt.value;
+    } else if (tagName === 'textarea') {
+      nativeTextAreaSetter ? nativeTextAreaSetter.call(element, value) : element.value = value;
+    } else if (type === 'radio') {
+      const label = element.parentElement?.textContent?.toLowerCase() || '';
+      if (element.value.toLowerCase() === value.toLowerCase() || label.includes(value.toLowerCase())) {
+        element.checked = true;
+      }
+    } else {
+      nativeInputSetter ? nativeInputSetter.call(element, value) : element.value = value;
+    }
+
+    ['input', 'change', 'blur'].forEach(evt =>
+      element.dispatchEvent(new Event(evt, { bubbles: true, cancelable: true }))
+    );
+
+    // React 支持
+    const reactProps = Object.keys(element).find(k => k.startsWith('__reactProps$'));
+    if (reactProps && element[reactProps]?.onChange) {
+      element[reactProps].onChange({ target: element });
+    }
+  }
+
+  // ========== 抽屉 UI ==========
+
+  function createDrawer() {
+    if (drawer) return;
+
+    drawer = document.createElement('div');
+    drawer.id = 'applyradar-drawer';
+    drawer.innerHTML = `
+      <div class="ar-drawer-tab" id="ar-drawer-tab">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/>
           <circle cx="12" cy="12" r="6"/>
           <circle cx="12" cy="12" r="2"/>
-          <line x1="12" y1="2" x2="12" y2="6"/>
         </svg>
       </div>
-      <div class="ar-fab-panel">
-        <div class="ar-fab-header">
-          <span class="ar-fab-title">ApplyRadar</span>
-          <button class="ar-fab-close">✕</button>
+      <div class="ar-drawer-panel" id="ar-drawer-panel">
+        <div class="ar-drawer-header">
+          <div class="ar-drawer-tabs">
+            <button class="ar-drawer-tab-btn active" data-tab="track">追踪</button>
+            <button class="ar-drawer-tab-btn" data-tab="fill">填写</button>
+          </div>
+          <button class="ar-drawer-close" id="ar-drawer-close">✕</button>
         </div>
-        <div class="ar-fab-body" id="ar-fab-body">
-          <div class="ar-fab-loading">检测页面中...</div>
-        </div>
+        <div class="ar-drawer-body" id="ar-drawer-body"></div>
       </div>
     `;
 
-    document.body.appendChild(fabContainer);
+    document.body.appendChild(drawer);
 
-    const btn = fabContainer.querySelector('.ar-fab-btn');
-    const panel = fabContainer.querySelector('.ar-fab-panel');
-    const closeBtn = fabContainer.querySelector('.ar-fab-close');
+    // 事件绑定
+    setupDrag();
+    document.getElementById('ar-drawer-close').addEventListener('click', closeDrawer);
 
-    btn.addEventListener('click', () => {
-      isExpanded = !isExpanded;
-      panel.classList.toggle('ar-fab-panel-open', isExpanded);
-      if (isExpanded) updatePanelContent();
-    });
-
-    closeBtn.addEventListener('click', () => {
-      isExpanded = false;
-      panel.classList.remove('ar-fab-panel-open');
+    drawer.querySelectorAll('.ar-drawer-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeTab = btn.dataset.tab;
+        drawer.querySelectorAll('.ar-drawer-tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderTabContent();
+      });
     });
 
     // 点击外部关闭
     document.addEventListener('click', (e) => {
-      if (!fabContainer.contains(e.target) && isExpanded) {
-        isExpanded = false;
-        panel.classList.remove('ar-fab-panel-open');
+      if (isDrawerOpen && drawer && !drawer.contains(e.target)) {
+        closeDrawer();
       }
-    });
+    }, true);
   }
 
-  function updatePanelContent() {
-    const body = document.getElementById('ar-fab-body');
+  function toggleDrawer() {
+    if (isDrawerOpen) {
+      closeDrawer();
+    } else {
+      openDrawer();
+    }
+  }
+
+  function openDrawer() {
+    createDrawer();
+    isDrawerOpen = true;
+    drawer.querySelector('.ar-drawer-panel').classList.add('ar-drawer-panel-open');
+    renderTabContent();
+  }
+
+  function closeDrawer() {
+    isDrawerOpen = false;
+    if (drawer) {
+      drawer.querySelector('.ar-drawer-panel').classList.remove('ar-drawer-panel-open');
+    }
+  }
+
+  function renderTabContent() {
+    const body = document.getElementById('ar-drawer-body');
     if (!body) return;
 
-    const info = extractPageInfo();
+    if (activeTab === 'track') {
+      renderTrackTab(body);
+    } else {
+      renderFillTab(body);
+    }
+  }
 
+  // ========== 追踪 Tab ==========
+
+  function renderTrackTab(body) {
+    const info = extractPageInfo();
     body.innerHTML = `
-      <div class="ar-fab-info">
-        <div class="ar-fab-info-row">
-          <span class="ar-fab-label">站点</span>
-          <span class="ar-fab-value">${info.siteName || info.domain}</span>
+      <div class="ar-drawer-info">
+        <div class="ar-drawer-info-row">
+          <span class="ar-drawer-label">站点</span>
+          <span class="ar-drawer-value">${info.siteName || info.domain}</span>
         </div>
-        <div class="ar-fab-info-row">
-          <span class="ar-fab-label">公司</span>
-          <span class="ar-fab-value">${info.companyName || '-'}</span>
+        <div class="ar-drawer-info-row">
+          <span class="ar-drawer-label">公司</span>
+          <span class="ar-drawer-value">${info.companyName || '-'}</span>
         </div>
-        <div class="ar-fab-info-row">
-          <span class="ar-fab-label">职位</span>
-          <span class="ar-fab-value">${info.jobTitle || '-'}</span>
+        <div class="ar-drawer-info-row">
+          <span class="ar-drawer-label">职位</span>
+          <span class="ar-drawer-value">${info.jobTitle || '-'}</span>
         </div>
-        <div class="ar-fab-info-row">
-          <span class="ar-fab-label">域名</span>
-          <span class="ar-fab-value ar-fab-domain">${info.domain}</span>
+        <div class="ar-drawer-info-row">
+          <span class="ar-drawer-label">域名</span>
+          <span class="ar-drawer-value ar-drawer-mono">${info.domain}</span>
         </div>
       </div>
-      <button class="ar-fab-confirm" id="ar-fab-confirm">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
+      <button class="ar-drawer-btn ar-drawer-btn-primary" id="ar-track-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
         添加追踪
       </button>
     `;
 
-    document.getElementById('ar-fab-confirm')?.addEventListener('click', () => {
-      handleAddTracking(info);
-    });
+    document.getElementById('ar-track-btn')?.addEventListener('click', () => handleAddTracking(info, body));
   }
 
-  function handleAddTracking(info) {
-    const confirmBtn = document.getElementById('ar-fab-confirm');
-    if (!confirmBtn) return;
-
-    confirmBtn.disabled = true;
-    confirmBtn.innerHTML = '<span class="ar-spinner"></span> 添加中...';
+  function handleAddTracking(info, body) {
+    const btn = document.getElementById('ar-track-btn');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ar-spinner"></span> 添加中...';
 
     chrome.runtime.sendMessage({
       type: 'ADD_TRACKING',
-      data: {
-        domain: info.domain,
-        status_url: info.url,
-        company_name: info.companyName,
-        job_title: info.jobTitle,
-      },
+      data: { domain: info.domain, status_url: info.url, company_name: info.companyName, job_title: info.jobTitle },
     }, (response) => {
       if (response?.success) {
-        confirmBtn.innerHTML = '✓ 已添加';
-        confirmBtn.classList.add('ar-fab-success');
-        setTimeout(() => {
-          isExpanded = false;
-          document.querySelector('.ar-fab-panel')?.classList.remove('ar-fab-panel-open');
-          confirmBtn.disabled = false;
-          confirmBtn.classList.remove('ar-fab-success');
-        }, 2000);
+        btn.innerHTML = '✓ 已添加';
+        btn.classList.add('ar-drawer-btn-success');
+        setTimeout(closeDrawer, 1500);
       } else {
-        confirmBtn.innerHTML = response?.error || '添加失败';
-        confirmBtn.classList.add('ar-fab-error');
+        btn.innerHTML = response?.error || '添加失败';
+        btn.classList.add('ar-drawer-btn-error');
         setTimeout(() => {
-          confirmBtn.innerHTML = '添加追踪';
-          confirmBtn.disabled = false;
-          confirmBtn.classList.remove('ar-fab-error');
-        }, 2500);
+          btn.innerHTML = '添加追踪';
+          btn.disabled = false;
+          btn.classList.remove('ar-drawer-btn-error');
+        }, 2000);
       }
     });
   }
 
-  // 初始化
-  if (isJobPage()) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createFAB);
-    } else {
-      createFAB();
-    }
+  // ========== 填写 Tab ==========
+
+  function renderFillTab(body) {
+    body.innerHTML = '<div class="ar-drawer-loading">获取简历数据...</div>';
+
+    chrome.runtime.sendMessage({ type: 'GET_RESUME' }, (response) => {
+      if (!response?.success || !response?.resume) {
+        body.innerHTML = `
+          <div class="ar-drawer-empty">
+            <p>未找到简历数据</p>
+            <p class="ar-drawer-hint">请先在 ApplyRadar 中创建简历</p>
+          </div>
+        `;
+        return;
+      }
+
+      const resume = response.resume;
+
+      // 直接列出所有简历字段，不扫描页面
+      const fields = [
+        { key: 'full_name', label: '姓名', value: resume.full_name },
+        { key: 'phone', label: '手机', value: resume.phone },
+        { key: 'email', label: '邮箱', value: resume.email },
+        { key: 'gender', label: '性别', value: resume.gender },
+        { key: 'birth_date', label: '出生日期', value: resume.birth_date },
+        { key: 'hometown', label: '籍贯', value: resume.hometown },
+        { key: 'target_position', label: '求职意向', value: resume.target_position },
+        { key: 'target_city', label: '期望城市', value: resume.target_city },
+        { key: 'expected_salary', label: '期望薪资', value: resume.expected_salary },
+        { key: 'school', label: '学校', value: resume.education?.[0]?.school },
+        { key: 'major', label: '专业', value: resume.education?.[0]?.major },
+        { key: 'education', label: '学历', value: resume.education?.[0]?.degree },
+        { key: 'work_company', label: '公司', value: resume.work_experience?.[0]?.company },
+        { key: 'work_title', label: '职位', value: resume.work_experience?.[0]?.title },
+      ].filter(f => f.value);
+
+      if (fields.length === 0) {
+        body.innerHTML = `
+          <div class="ar-drawer-empty">
+            <p>简历数据为空</p>
+            <p class="ar-drawer-hint">请先在 ApplyRadar 中填写简历</p>
+          </div>
+        `;
+        return;
+      }
+
+      let html = '<div class="ar-fill-fields">';
+      for (const field of fields) {
+        html += `
+          <div class="ar-fill-field matched">
+            <label class="ar-fill-label">
+              <input type="checkbox" class="ar-fill-cb" data-field="${field.key}" data-value="${field.value}" checked>
+              <span>${field.label}</span>
+            </label>
+            <span class="ar-fill-val">${field.value}</span>
+          </div>
+        `;
+      }
+      html += '</div>';
+      html += `
+        <div class="ar-fill-actions">
+          <button class="ar-drawer-btn ar-drawer-btn-ghost" id="ar-fill-all">全不选</button>
+          <button class="ar-drawer-btn ar-drawer-btn-primary" id="ar-fill-go">填写选中</button>
+        </div>
+      `;
+      body.innerHTML = html;
+
+      document.getElementById('ar-fill-all')?.addEventListener('click', () => {
+        const cbs = body.querySelectorAll('.ar-fill-cb');
+        const allOn = Array.from(cbs).every(c => c.checked);
+        cbs.forEach(c => c.checked = !allOn);
+      });
+
+      document.getElementById('ar-fill-go')?.addEventListener('click', () => {
+        let count = 0;
+        body.querySelectorAll('.ar-fill-cb:checked').forEach(cb => {
+          const val = cb.dataset.value;
+          const field = cb.dataset.field;
+          if (!val) return;
+
+          // 直接在页面上找匹配的 input 填入
+          for (const input of document.querySelectorAll('input, select, textarea')) {
+            const info = identifyField(input);
+            if (info && info.fieldName === field) {
+              fillElement(input, val);
+              count++;
+              break;
+            }
+          }
+        });
+        const goBtn = document.getElementById('ar-fill-go');
+        if (goBtn) {
+          goBtn.innerHTML = count > 0 ? `✓ 已填写 ${count} 个字段` : '未匹配到表单字段';
+          goBtn.classList.add(count > 0 ? 'ar-drawer-btn-success' : 'ar-drawer-btn-error');
+          setTimeout(closeDrawer, 1500);
+        }
+      });
+    });
+  }
+
+  // ========== 拖动 ==========
+
+  function setupDrag() {
+    const tab = drawer.querySelector('.ar-drawer-tab');
+    let dragging = false;
+    let moved = false;
+    let startY = 0;
+    let startTop = 0;
+
+    tab.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      moved = false;
+      startY = e.clientY;
+      startTop = tab.getBoundingClientRect().top;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const dy = e.clientY - startY;
+      if (Math.abs(dy) > 3) moved = true;
+      if (!moved) return;
+
+      const tabH = tab.offsetHeight;
+      const minY = 40;
+      const maxY = window.innerHeight - tabH - 20;
+      const newTop = Math.min(maxY, Math.max(minY, startTop + dy));
+      tab.style.position = 'fixed';
+      tab.style.top = newTop + 'px';
+      tab.style.right = '0';
+      tab.style.transform = 'none';
+
+      // 同步面板位置
+      const panel = drawer.querySelector('.ar-drawer-panel');
+      panel.style.top = newTop + 'px';
+      panel.style.transform = 'none';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      if (!moved) {
+        toggleDrawer();
+        return;
+      }
+      // 吸附到当前位置的右侧边缘
+      const tabEl = drawer.querySelector('.ar-drawer-tab');
+      const panel = drawer.querySelector('.ar-drawer-panel');
+      const rect = tabEl.getBoundingClientRect();
+      const tabH = rect.height;
+      const minY = 10;
+      const maxY = window.innerHeight - tabH - 10;
+      const clampedTop = Math.min(maxY, Math.max(minY, rect.top));
+
+      tabEl.style.top = clampedTop + 'px';
+      tabEl.style.bottom = 'auto';
+      panel.style.top = clampedTop + 'px';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+    });
+  }
+
+  // ========== 初始化 ==========
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', createDrawer);
+  } else {
+    createDrawer();
   }
 })();

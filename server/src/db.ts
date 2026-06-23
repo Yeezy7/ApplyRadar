@@ -168,6 +168,66 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_tracking_targets_application ON tracking_targets(application_id);
     CREATE INDEX IF NOT EXISTS idx_tracking_runs_target ON tracking_runs(target_id);
     CREATE INDEX IF NOT EXISTS idx_push_logs_user ON push_logs(user_id);
+
+    CREATE TABLE IF NOT EXISTS resumes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      is_default INTEGER DEFAULT 0,
+      full_name TEXT,
+      phone TEXT,
+      email TEXT,
+      gender TEXT,
+      birth_date TEXT,
+      hometown TEXT,
+      political_status TEXT,
+      target_position TEXT,
+      target_city TEXT,
+      expected_salary TEXT,
+      job_type TEXT,
+      education TEXT,
+      work_experience TEXT,
+      projects TEXT,
+      skills TEXT,
+      certifications TEXT,
+      summary TEXT,
+      pdf_file_path TEXT,
+      raw_text TEXT,
+      parsed_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS resume_attachments (
+      id TEXT PRIMARY KEY,
+      resume_id TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_size INTEGER,
+      mime_type TEXT DEFAULT 'application/pdf',
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS form_templates (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      domain TEXT NOT NULL,
+      site_name TEXT,
+      field_mappings TEXT NOT NULL DEFAULT '{}',
+      is_ai_generated INTEGER DEFAULT 0,
+      confidence REAL,
+      last_used_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_resumes_user ON resumes(user_id);
+    CREATE INDEX IF NOT EXISTS idx_resume_attachments_resume ON resume_attachments(resume_id);
+    CREATE INDEX IF NOT EXISTS idx_form_templates_user ON form_templates(user_id);
+    CREATE INDEX IF NOT EXISTS idx_form_templates_domain ON form_templates(user_id, domain);
   `);
 
   console.log('Database initialized');

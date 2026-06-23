@@ -17,6 +17,7 @@ const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ApplicationDetailPage = lazy(() => import("./pages/ApplicationDetailPage"));
 const TrackerPage = lazy(() => import("./pages/TrackerPage"));
 const PushPage = lazy(() => import("./pages/PushPage"));
+const ResumePage = lazy(() => import("./pages/ResumePage"));
 
 // 加载状态组件
 function PageLoading() {
@@ -112,6 +113,7 @@ export default function App() {
               {currentPage === "tracker" && <TrackerPage />}
               {currentPage === "reminders" && <RemindersPage />}
               {currentPage === "push" && <PushPage />}
+              {currentPage === "resume" && <ResumePage />}
               {currentPage === "settings" && (
                 <SettingsPage onLogout={handleLogout} />
               )}

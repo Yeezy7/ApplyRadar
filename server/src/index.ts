@@ -21,6 +21,8 @@ import backupRoutes from './routes/backup.js';
 import emailRoutes from './routes/email.js';
 import autoCheckRoutes from './routes/autoCheck.js';
 import syncRoutes from './routes/sync.js';
+import resumeRoutes from './routes/resume.js';
+import formTemplateRoutes from './routes/formTemplate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -201,6 +203,8 @@ app.use('/api/backup/*', authMiddleware);
 app.use('/api/email/*', authMiddleware);
 app.use('/api/auto-check/*', authMiddleware);
 app.use('/api/sync/*', authMiddleware);
+app.use('/api/resumes/*', authMiddleware);
+app.use('/api/form-templates/*', authMiddleware);
 
 app.route('/api/applications', applicationRoutes);
 app.route('/api/events', eventRoutes);
@@ -214,6 +218,8 @@ app.route('/api/backup', backupRoutes);
 app.route('/api/email', emailRoutes);
 app.route('/api/auto-check', autoCheckRoutes);
 app.route('/api/sync', syncRoutes);
+app.route('/api/resumes', resumeRoutes);
+app.route('/api/form-templates', formTemplateRoutes);
 
 // Scheduler status and manual triggers
 app.get('/api/scheduler/status', authMiddleware, (c) => {

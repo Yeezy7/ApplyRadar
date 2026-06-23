@@ -7,6 +7,7 @@ export type Page =
   | "tracker"
   | "reminders"
   | "push"
+  | "resume"
   | "settings";
 
 interface RouteState {
@@ -19,7 +20,7 @@ function parseHash(hash: string): RouteState {
   const parts = cleanHash.split("/");
 
   const page = (parts[0] || "dashboard") as Page;
-  const validPages: Page[] = ["dashboard", "applications", "kanban", "tracker", "reminders", "push", "settings"];
+  const validPages: Page[] = ["dashboard", "applications", "kanban", "tracker", "reminders", "push", "resume", "settings"];
   const validPage = validPages.includes(page) ? page : "dashboard";
 
   const selectedAppId = parts[1] || null;

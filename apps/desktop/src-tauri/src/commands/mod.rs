@@ -10,3 +10,4 @@ pub mod settings;
 pub mod email;
 pub mod push_log;
 pub mod backup;
+pub mod resume;
