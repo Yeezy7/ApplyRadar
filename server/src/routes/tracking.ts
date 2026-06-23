@@ -4,6 +4,7 @@ import db from '../db.js';
 import { generateId } from '../auth.js';
 import { z } from 'zod';
 import { validateBody } from '../validate.js';
+import { encryptSecret, decryptSecret } from '../crypto.js';
 
 const trackingTargetSchema = z.object({
   application_id: z.string().uuid(),
@@ -12,6 +13,18 @@ const trackingTargetSchema = z.object({
   ats_type: z.string().max(50).optional(),
   enabled: z.number().int().min(0).max(1).optional(),
   check_frequency: z.enum(['manual', 'daily', 'every_12h', 'every_6h']).optional(),
+});
+
+// Worker 回调数据 schema — 防止 worker 注入非法字段
+const workerRunSchema = z.object({
+  status: z.enum(['success', 'failed', 'timeout', 'login_expired']).optional(),
+  raw_status: z.string().max(50000).optional(),
+  normalized_status: z.string().max(500).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  login_state: z.enum(['unknown', 'valid', 'expired', 'captcha_required', 'mfa_required', 'blocked']).optional(),
+  error_message: z.string().max(2000).optional(),
+  page_hash: z.string().max(200).optional(),
+  ai_used: z.union([z.boolean(), z.number()]).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -161,12 +174,12 @@ app.put('/:id/cookies', async (c) => {
     return c.json({ code: 404, msg: '追踪目标不存在' }, 404);
   }
 
-  // cookies 可以是 JSON 字符串或对象
+  // cookies 可以是 JSON 字符串或对象，加密存储
   const cookies = typeof body.cookies === 'string' ? body.cookies : JSON.stringify(body.cookies || []);
 
   db.prepare(
     "UPDATE tracking_targets SET session_cookies = ?, updated_at = datetime('now') WHERE id = ? AND user_id = ?"
-  ).run(cookies, id, userId);
+  ).run(encryptSecret(cookies), id, userId);
 
   return c.json({ code: 0, msg: 'Cookie 已更新' });
 });
@@ -222,11 +235,9 @@ export default app;
 
 // ---------- Worker 回调专用路由 ----------
 // 允许 worker service token 鉴权，不强制 userId 匹配
-function parseBody(c: any) {
+async function parseBody(c: any): Promise<any> {
   try {
-    const text = c.req.text ? '' : '';
-    // Hono c.req.json() can only be called once, use raw text
-    return c.req.json?.() || {};
+    return await c.req.json();
   } catch {
     return {};
   }
@@ -235,7 +246,20 @@ function parseBody(c: any) {
 async function handleCreateRun(userId: string, targetId: string, body: any) {
   const isWorker = userId === '__worker__';
 
-  // Verify target exists and belongs to user (skip for worker)
+  // 安全：worker 回调也必须校验数据格式，防止注入非法字段
+  if (isWorker) {
+    const parsed = workerRunSchema.safeParse(body);
+    if (!parsed.success) {
+      const errors = parsed.error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ');
+      return new Response(JSON.stringify({ code: 400, msg: `数据校验失败: ${errors}` }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    body = parsed.data; // 使用校验后的数据
+  }
+
+  // Verify target exists and belongs to user (skip ownership check for worker)
   const target = db.prepare(
     isWorker
       ? 'SELECT * FROM tracking_targets WHERE id = ?'

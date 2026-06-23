@@ -2,6 +2,10 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { encryptSecret } from '../crypto.js';
+
+// 敏感字段列表（写入时加密）
+const SENSITIVE_FIELDS = ['api_key', 'smtp_password'];
 
 const app = new Hono<AppEnv>();
 
@@ -166,12 +170,12 @@ app.post('/push', async (c) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, userId,
-        settings.api_key || '', settings.api_base_url || 'https://api.openai.com/v1',
+        encryptSecret(settings.api_key || ''), settings.api_base_url || 'https://api.openai.com/v1',
         settings.model || 'gpt-4o-mini', settings.check_frequency || 'daily',
         settings.notifications_enabled ?? 1, settings.auto_check_enabled ?? 0,
         settings.email_report_enabled ?? 0, settings.smtp_host || '',
         settings.smtp_port || '465', settings.smtp_username || '',
-        settings.smtp_password || '', settings.smtp_recipient || '',
+        encryptSecret(settings.smtp_password || ''), settings.smtp_recipient || '',
         settings.email_report_time || '09:00'
       );
       results.settings.updated = true;
@@ -184,19 +188,20 @@ app.post('/push', async (c) => {
           smtp_recipient = ?, email_report_time = ?, updated_at = datetime('now')
          WHERE user_id = ?`
       ).run(
-        settings.api_key || existing.api_key,
-        settings.api_base_url || existing.api_base_url,
-        settings.model || existing.model,
-        settings.check_frequency || existing.check_frequency,
+        // 用 ?? 替代 ||：允许用户传 "" 清空字段，仅在 undefined/null 时保留旧值
+        encryptSecret(settings.api_key ?? existing.api_key),
+        settings.api_base_url ?? existing.api_base_url,
+        settings.model ?? existing.model,
+        settings.check_frequency ?? existing.check_frequency,
         settings.notifications_enabled ?? existing.notifications_enabled,
         settings.auto_check_enabled ?? existing.auto_check_enabled,
         settings.email_report_enabled ?? existing.email_report_enabled,
-        settings.smtp_host || existing.smtp_host,
-        settings.smtp_port || existing.smtp_port,
-        settings.smtp_username || existing.smtp_username,
-        settings.smtp_password || existing.smtp_password,
-        settings.smtp_recipient || existing.smtp_recipient,
-        settings.email_report_time || existing.email_report_time,
+        settings.smtp_host ?? existing.smtp_host,
+        settings.smtp_port ?? existing.smtp_port,
+        settings.smtp_username ?? existing.smtp_username,
+        encryptSecret(settings.smtp_password ?? existing.smtp_password),
+        settings.smtp_recipient ?? existing.smtp_recipient,
+        settings.email_report_time ?? existing.email_report_time,
         userId
       );
       results.settings.updated = true;
@@ -421,12 +426,12 @@ app.post('/merge', async (c) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, userId,
-        settings.api_key || '', settings.api_base_url || 'https://api.openai.com/v1',
+        encryptSecret(settings.api_key || ''), settings.api_base_url || 'https://api.openai.com/v1',
         settings.model || 'gpt-4o-mini', settings.check_frequency || 'daily',
         settings.notifications_enabled ?? 1, settings.auto_check_enabled ?? 0,
         settings.email_report_enabled ?? 0, settings.smtp_host || '',
         settings.smtp_port || '465', settings.smtp_username || '',
-        settings.smtp_password || '', settings.smtp_recipient || '',
+        encryptSecret(settings.smtp_password || ''), settings.smtp_recipient || '',
         settings.email_report_time || '09:00'
       );
       results.settings.updated = true;
@@ -444,19 +449,20 @@ app.post('/merge', async (c) => {
             smtp_recipient = ?, email_report_time = ?, updated_at = datetime('now')
            WHERE user_id = ?`
         ).run(
-          settings.api_key || (remoteSettings as any).api_key,
-          settings.api_base_url || (remoteSettings as any).api_base_url,
-          settings.model || (remoteSettings as any).model,
-          settings.check_frequency || (remoteSettings as any).check_frequency,
+          // 用 ?? 替代 ||：允许用户传 "" 清空字段，仅在 undefined/null 时保留旧值
+          encryptSecret(settings.api_key ?? (remoteSettings as any).api_key),
+          settings.api_base_url ?? (remoteSettings as any).api_base_url,
+          settings.model ?? (remoteSettings as any).model,
+          settings.check_frequency ?? (remoteSettings as any).check_frequency,
           settings.notifications_enabled ?? (remoteSettings as any).notifications_enabled,
           settings.auto_check_enabled ?? (remoteSettings as any).auto_check_enabled,
           settings.email_report_enabled ?? (remoteSettings as any).email_report_enabled,
-          settings.smtp_host || (remoteSettings as any).smtp_host,
-          settings.smtp_port || (remoteSettings as any).smtp_port,
-          settings.smtp_username || (remoteSettings as any).smtp_username,
-          settings.smtp_password || (remoteSettings as any).smtp_password,
-          settings.smtp_recipient || (remoteSettings as any).smtp_recipient,
-          settings.email_report_time || (remoteSettings as any).email_report_time,
+          settings.smtp_host ?? (remoteSettings as any).smtp_host,
+          settings.smtp_port ?? (remoteSettings as any).smtp_port,
+          settings.smtp_username ?? (remoteSettings as any).smtp_username,
+          encryptSecret(settings.smtp_password ?? (remoteSettings as any).smtp_password),
+          settings.smtp_recipient ?? (remoteSettings as any).smtp_recipient,
+          settings.email_report_time ?? (remoteSettings as any).email_report_time,
           userId
         );
         results.settings.updated = true;

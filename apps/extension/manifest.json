@@ -28,7 +28,18 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://*.zhipin.com/*",
+        "https://*.liepin.com/*",
+        "https://*.lagou.com/*",
+        "https://*.51job.com/*",
+        "https://*.maimai.cn/*",
+        "https://*.zhaopin.com/*",
+        "https://*.nowcoder.com/*",
+        "https://*.linkedin.com/*",
+        "https://*.hotjob.cn/*",
+        "https://*.kanzhun.com/*"
+      ],
       "js": [
         "content/form-detector.js",
         "content/form-filler.js",

@@ -184,6 +184,77 @@ async fn run_migrations(pool: &SqlitePool) -> Result<(), String> {
     ensure_column(pool, "application_events", "handled_action", "TEXT").await?;
     ensure_column(pool, "reminders", "notified_at", "TEXT").await?;
 
+    // 简历表迁移
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS resumes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            full_name TEXT,
+            phone TEXT,
+            email TEXT,
+            gender TEXT,
+            birth_date TEXT,
+            hometown TEXT,
+            political_status TEXT,
+            target_position TEXT,
+            target_city TEXT,
+            expected_salary TEXT,
+            job_type TEXT,
+            education TEXT,
+            work_experience TEXT,
+            projects TEXT,
+            skills TEXT,
+            certifications TEXT,
+            summary TEXT,
+            pdf_file_path TEXT,
+            raw_text TEXT,
+            parsed_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    "#)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Migration failed (resumes): {}", e))?;
+
+    // 简历附件表
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS resume_attachments (
+            id TEXT PRIMARY KEY,
+            resume_id TEXT NOT NULL,
+            file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            file_size INTEGER,
+            mime_type TEXT DEFAULT 'application/pdf',
+            uploaded_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (resume_id) REFERENCES resumes(id) ON DELETE CASCADE
+        )
+    "#)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Migration failed (resume_attachments): {}", e))?;
+
+    // 表单模板表
+    sqlx::query(r#"
+        CREATE TABLE IF NOT EXISTS form_templates (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT '',
+            domain TEXT NOT NULL,
+            site_name TEXT,
+            field_mappings TEXT NOT NULL DEFAULT '{}',
+            is_ai_generated INTEGER DEFAULT 0,
+            confidence REAL,
+            last_used_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    "#)
+    .execute(pool)
+    .await
+    .map_err(|e| format!("Migration failed (form_templates): {}", e))?;
+
     Ok(())
 }
 

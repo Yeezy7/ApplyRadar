@@ -4,6 +4,7 @@ import db from '../db.js';
 import { generateId } from '../auth.js';
 import { validateBody, isPrivateUrl } from '../validate.js';
 import { z } from 'zod';
+import { decryptSecret } from '../crypto.js';
 
 const educationSchema = z.object({
   school: z.string().min(1).max(200),
@@ -276,7 +277,9 @@ app.post('/:id/upload-pdf', async (c) => {
     const { mkdirSync, writeFileSync } = await import('fs');
     mkdirSync(uploadDir, { recursive: true });
 
-    const fileName = `${Date.now()}_${file.name}`;
+    // 安全：清理文件名，防止路径穿越
+    const safeName = file.name.replace(/[^a-zA-Z0-9._\-一-鿿]/g, '_');
+    const fileName = `${Date.now()}_${safeName}`;
     const filePath = `${uploadDir}/${fileName}`;
     const buffer = Buffer.from(await file.arrayBuffer());
     writeFileSync(filePath, buffer);
@@ -317,7 +320,7 @@ app.post('/:id/parse', async (c) => {
 
   // Get user AI settings
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
-  if (!settings || !settings.api_key) {
+  if (!settings || !decryptSecret(settings.api_key)) {
     return c.json({ code: 400, msg: '请先配置 AI API Key' }, 400);
   }
 
@@ -404,7 +407,7 @@ ${rawText.slice(0, 15000)}`;
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.api_key}`,
+        'Authorization': `Bearer ${decryptSecret(settings.api_key)}`,
       },
       body: JSON.stringify({
         model,

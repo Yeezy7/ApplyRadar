@@ -3,13 +3,18 @@ import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
 import { validateBody, settingsSchema } from '../validate.js';
+import { encryptSecret, decryptSecret, isEncrypted } from '../crypto.js';
 
 const app = new Hono<AppEnv>();
 
-// 脱敏处理
+// 敏感字段列表
+const SENSITIVE_FIELDS = ['api_key', 'smtp_password'];
+
+// 脱敏处理（先解密再脱敏）
 function maskSensitive(value: string): string {
   if (!value || value.length <= 4) return '****';
-  return '****' + value.slice(-4);
+  const decrypted = decryptSecret(value);
+  return '****' + decrypted.slice(-4);
 }
 
 // Get settings
@@ -24,7 +29,7 @@ app.get('/', (c) => {
     settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
   }
 
-  // 敏感信息脱敏
+  // 敏感信息脱敏（先解密再截取末尾）
   const maskedSettings = {
     ...settings,
     api_key: settings.api_key ? maskSensitive(settings.api_key) : '',
@@ -41,7 +46,7 @@ app.put('/', validateBody(settingsSchema), async (c) => {
 
   const existing = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
 
-  // 如果前端传来的值是脱敏的（****），则保留原值
+  // 如果前端传来的值是脱敏的（****），则保留原值（已加密存储）
   const getOriginalValue = (field: string, newValue: string | undefined) => {
     if (!newValue || newValue.startsWith('****')) {
       return existing ? (existing as any)[field] : '';
@@ -57,7 +62,7 @@ app.put('/', validateBody(settingsSchema), async (c) => {
     ).run(
       id,
       userId,
-      body.api_key || '',
+      encryptSecret(body.api_key || ''),
       body.api_base_url || 'https://api.openai.com/v1',
       body.model || 'gpt-4o-mini',
       body.check_frequency || 'daily',
@@ -67,7 +72,7 @@ app.put('/', validateBody(settingsSchema), async (c) => {
       body.smtp_host || '',
       body.smtp_port || '465',
       body.smtp_username || '',
-      body.smtp_password || '',
+      encryptSecret(body.smtp_password || ''),
       body.smtp_recipient || '',
       body.email_report_time || '09:00'
     );
@@ -86,11 +91,12 @@ app.put('/', validateBody(settingsSchema), async (c) => {
         if (field === 'notifications_enabled' || field === 'auto_check_enabled' || field === 'email_report_enabled') {
           fields.push(`${field} = ?`);
           params.push((body as any)[field] ? 1 : 0);
-        } else if (field === 'api_key' || field === 'smtp_password') {
-          // 处理敏感字段：如果是脱敏值则保留原值
+        } else if (SENSITIVE_FIELDS.includes(field)) {
+          // 处理敏感字段：脱敏值保留原值，已加密值直接保留，新明文值加密存储
           const value = getOriginalValue(field, (body as any)[field]);
+          const stored = value.startsWith('****') || isEncrypted(value) ? value : encryptSecret(value);
           fields.push(`${field} = ?`);
-          params.push(value);
+          params.push(stored);
         } else {
           fields.push(`${field} = ?`);
           params.push((body as any)[field]);

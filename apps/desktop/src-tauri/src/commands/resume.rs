@@ -383,7 +383,7 @@ pub async fn parse_resume_pdf(
 
     // Call AI to extract structured data
     let settings = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT api_key, api_base_url, model FROM user_settings LIMIT 1"
+        "SELECT api_key, api_base_url, model FROM settings LIMIT 1"
     )
     .fetch_optional(pool)
     .await

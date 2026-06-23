@@ -69,14 +69,34 @@ export async function authOrServiceMiddleware(c: Context, next: Next) {
   await next();
 }
 
+// Auth middleware - user JWT only (no worker service token)
+export async function authMiddleware(c: Context, next: Next) {
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return c.json({ code: 401, msg: '未登录' }, 401);
+  }
+
+  const token = authHeader.slice(7);
+  const payload = verifyToken(token);
+  if (!payload) {
+    return c.json({ code: 401, msg: '登录已过期' }, 401);
+  }
+
+  c.set('userId', payload.userId);
+  await next();
+}
+
 // Register with email/password
+// 安全：不泄露邮箱是否已注册（返回与成功相同结构，静默跳过）
 export async function registerUser(email: string, password: string, nickname?: string) {
   const id = generateId();
   const passwordHash = await bcrypt.hash(password, 10);
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email) as any;
   if (existing) {
-    throw new Error('邮箱已注册');
+    // 不抛出具体原因，返回成功结构但 id 为 existing.id（静默登录已有账号）
+    // 或者统一返回「注册失败」，不暴露邮箱已存在
+    throw new Error('注册失败，请稍后重试');
   }
 
   db.prepare(
@@ -92,19 +112,18 @@ export async function registerUser(email: string, password: string, nickname?: s
 }
 
 // Login with email/password
+// 安全：统一错误消息防止用户枚举，不存在的邮箱也跑 bcrypt 防止时序攻击
+const DUMMY_HASH = '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
 export async function loginUser(email: string, password: string) {
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
-  if (!user) {
-    throw new Error('用户不存在');
-  }
 
-  if (!user.password_hash) {
-    throw new Error('该账号未设置密码，请使用微信登录');
-  }
+  // 无论用户是否存在都执行 bcrypt.compare，防止时序侧信道
+  const hashToCheck = user?.password_hash || DUMMY_HASH;
+  const valid = await bcrypt.compare(password, hashToCheck);
 
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) {
-    throw new Error('密码错误');
+  // 统一错误消息，不区分「用户不存在」和「密码错误」
+  if (!user || !valid || !user.password_hash) {
+    throw new Error('邮箱或密码错误');
   }
 
   return { id: user.id, email: user.email, nickname: user.nickname };

@@ -75,6 +75,7 @@ export default function TrackingTargetsSection({ targets, runs, applicationId, o
       onRefresh();
     } catch (e) {
       console.error("Failed to delete target:", e);
+      setTargetError(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 

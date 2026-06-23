@@ -12,7 +12,9 @@ const RATE_LIMIT = parseInt(process.env.WORKER_RATE_LIMIT || "30", 10);
 const ts = () => new Date().toISOString();
 
 console.log(`[${ts()}] [worker] Starting ApplyRadar Worker...`);
-console.log(`[${ts()}] [worker] Redis: ${REDIS_URL}`);
+// 安全：不输出完整 Redis URL（可能含密码）
+const redisHost = REDIS_URL.replace(/\/\/[^@]*@/, '//***@');
+console.log(`[${ts()}] [worker] Redis: ${redisHost}`);
 console.log(`[${ts()}] [worker] Server: ${SERVER_URL}`);
 console.log(`[${ts()}] [worker] Service token: ${WORKER_SERVICE_TOKEN ? "configured" : "NOT configured"}`);
 console.log(`[${ts()}] [worker] Concurrency: ${CONCURRENCY}`);
@@ -44,6 +46,7 @@ const worker = new Worker(
           "Content-Type": "application/json",
           Authorization: `Bearer ${WORKER_SERVICE_TOKEN}`,
         },
+        signal: AbortSignal.timeout(30000), // 30 秒超时，防止挂起
         body: JSON.stringify({
           status: result.success ? "success" : "failed",
           login_state: result.loginState,
@@ -88,20 +91,26 @@ worker.on("error", (error) => {
   console.error(`[${ts()}] [worker] Worker error:`, error);
 });
 
-// Handle graceful shutdown
-process.on("SIGINT", async () => {
-  console.log(`[${ts()}] [worker] Shutting down...`);
-  await worker.close();
-  await connection.quit();
-  process.exit(0);
-});
+// Handle graceful shutdown（带超时，防止进程挂起）
+async function gracefulShutdown(signal: string) {
+  console.log(`[${ts()}] [worker] Received ${signal}, shutting down...`);
+  const shutdownTimeout = setTimeout(() => {
+    console.error(`[${ts()}] [worker] Shutdown timed out, forcing exit`);
+    process.exit(1);
+  }, 10000);
 
-process.on("SIGTERM", async () => {
-  console.log(`[${ts()}] [worker] Shutting down...`);
-  await worker.close();
-  await connection.quit();
+  try {
+    await worker.close();
+    await connection.quit();
+  } catch (e) {
+    console.error(`[${ts()}] [worker] Error during shutdown:`, e);
+  }
+  clearTimeout(shutdownTimeout);
   process.exit(0);
-});
+}
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 
 console.log(`[${ts()}] [worker] Worker started, waiting for jobs...`);
 

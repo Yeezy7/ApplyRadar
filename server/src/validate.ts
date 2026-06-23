@@ -91,6 +91,86 @@ export function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
+// 备份导入 schema（包含 id 和时间戳，用于校验客户端传入的备份数据）
+const VALID_STATUSES = ['to_apply', 'applied', 'received', 'under_review', 'assessment', 'interview', 'final_interview', 'offer', 'accepted', 'rejected', 'withdrawn', 'unknown'];
+const VALID_SOURCES = ['official', 'email', 'referral', 'linkedin', 'boss', 'manual'];
+const VALID_PRIORITIES = ['low', 'medium', 'high'];
+const VALID_EVENT_TYPES = ['status_change', 'note', 'interview', 'offer', 'rejected', 'other'];
+const VALID_REMINDER_TYPES = ['interview', 'assessment_deadline', 'offer_deadline', 'follow_up', 'document_required', 'custom'];
+const VALID_LOGIN_STATES = ['unknown', 'valid', 'expired', 'captcha_required', 'mfa_required', 'blocked'];
+
+const backupAppSchema = z.object({
+  id: z.string().min(1),
+  company_name: z.string().min(1).max(200),
+  job_title: z.string().min(1).max(200),
+  location: z.string().max(200).nullish(),
+  salary_range: z.string().max(100).nullish(),
+  job_url: z.string().max(500).nullish(),
+  status_url: z.string().max(500).nullish(),
+  source: z.enum(VALID_SOURCES as [string, ...string[]]).nullish(),
+  status: z.enum(VALID_STATUSES as [string, ...string[]]).nullish(),
+  priority: z.enum(VALID_PRIORITIES as [string, ...string[]]).nullish(),
+  applied_at: z.string().nullish(),
+  deadline_at: z.string().nullish(),
+  notes: z.string().max(5000).nullish(),
+  created_at: z.string().min(1),
+  updated_at: z.string().min(1),
+});
+
+const backupEventSchema = z.object({
+  id: z.string().min(1),
+  application_id: z.string().min(1),
+  event_type: z.enum(VALID_EVENT_TYPES as [string, ...string[]]),
+  title: z.string().min(1).max(200),
+  content: z.string().max(2000).nullish(),
+  old_status: z.enum(VALID_STATUSES as [string, ...string[]]).nullish(),
+  new_status: z.enum(VALID_STATUSES as [string, ...string[]]).nullish(),
+  handled_at: z.string().nullish(),
+  handled_action: z.string().max(200).nullish(),
+  event_time: z.string().min(1),
+  created_at: z.string().min(1),
+});
+
+const backupReminderSchema = z.object({
+  id: z.string().min(1),
+  application_id: z.string().nullish(),
+  title: z.string().min(1).max(200),
+  content: z.string().max(2000).nullish(),
+  reminder_type: z.enum(VALID_REMINDER_TYPES as [string, ...string[]]).nullish(),
+  remind_at: z.string().min(1),
+  is_done: z.union([z.boolean(), z.number()]).nullish(),
+  notified_at: z.string().nullish(),
+  created_by: z.string().max(50).nullish(),
+  created_at: z.string().min(1),
+  updated_at: z.string().min(1),
+});
+
+const backupTargetSchema = z.object({
+  id: z.string().min(1),
+  application_id: z.string().min(1),
+  domain: z.string().min(1).max(200),
+  status_url: z.string().min(1).max(500),
+  ats_type: z.string().max(50).nullish(),
+  enabled: z.union([z.boolean(), z.number()]).nullish(),
+  check_frequency: z.enum(['manual', 'daily', 'every_12h', 'every_6h']).nullish(),
+  current_status: z.string().max(500).nullish(),
+  last_status: z.string().max(500).nullish(),
+  login_state: z.enum(VALID_LOGIN_STATES as [string, ...string[]]).nullish(),
+  last_checked_at: z.string().nullish(),
+  last_success_at: z.string().nullish(),
+  last_error: z.string().max(1000).nullish(),
+  last_text_hash: z.string().max(200).nullish(),
+  created_at: z.string().min(1),
+  updated_at: z.string().min(1),
+});
+
+export const backupImportSchema = z.object({
+  applications: z.array(backupAppSchema).min(1, '至少需要一条求职记录'),
+  events: z.array(backupEventSchema).optional(),
+  reminders: z.array(backupReminderSchema).optional(),
+  tracking_targets: z.array(backupTargetSchema).optional(),
+});
+
 // SSRF 防护：检查 URL 是否是内网地址
 export function isPrivateUrl(url: string): boolean {
   try {

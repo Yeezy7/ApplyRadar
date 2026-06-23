@@ -5,7 +5,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { serve } from '@hono/node-server';
-import { initDatabase } from './db.js';
+import db, { initDatabase } from './db.js';
 import { authMiddleware, authOrServiceMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
 import { initScheduler, getSchedulerStatus, triggerAutoCheck, triggerEmailReport } from './scheduler.js';
 import { validateBody, loginSchema, registerSchema } from './validate.js';
@@ -29,15 +29,16 @@ const app = new Hono<AppEnv>();
 // CORS 白名单
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(',');
 
-// Rate Limiting 简单实现
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function getRateLimit(key: string, limit: number, windowMs: number): boolean {
+// Rate Limiting — 基于 SQLite，支持多实例和重启持久化
+// 安全：用事务包裹读写，防止并发请求绕过限流
+const rateLimitCheck = db.transaction((key: string, limit: number, windowMs: number): boolean => {
   const now = Date.now();
-  const entry = rateLimitMap.get(key);
+  const resetAt = now + windowMs;
 
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + windowMs });
+  const entry = db.prepare('SELECT count, reset_at FROM rate_limits WHERE key = ?').get(key) as any;
+
+  if (!entry || now > entry.reset_at) {
+    db.prepare('INSERT OR REPLACE INTO rate_limits (key, count, reset_at) VALUES (?, 1, ?)').run(key, resetAt);
     return true;
   }
 
@@ -45,19 +46,27 @@ function getRateLimit(key: string, limit: number, windowMs: number): boolean {
     return false;
   }
 
-  entry.count++;
+  db.prepare('UPDATE rate_limits SET count = count + 1 WHERE key = ?').run(key);
   return true;
+});
+
+function getRateLimit(key: string, limit: number, windowMs: number): boolean {
+  return rateLimitCheck(key, limit, windowMs);
 }
 
 // 每分钟清理过期的 rate limit 记录
 setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitMap.entries()) {
-    if (now > entry.resetAt) {
-      rateLimitMap.delete(key);
-    }
-  }
+  db.prepare('DELETE FROM rate_limits WHERE reset_at < ?').run(Date.now());
 }, 60000);
+
+// 全局错误处理器 — 防止堆栈信息泄露
+app.onError((err, c) => {
+  console.error(`[Error] ${c.req.method} ${c.req.path}:`, err);
+  return c.json({ code: 500, msg: '服务器内部错误' }, 500);
+});
+
+// 安全响应头（必须在最前面，确保所有响应都包含安全头）
+app.use('*', secureHeaders());
 
 // Middleware
 app.use('*', cors({
@@ -81,10 +90,14 @@ app.use('*', cors({
 app.use('*', logger());
 
 // Rate limiting 中间件
+// 安全：取 X-Forwarded-For 第一个 IP（由可信反向代理设置），
+// 结合 User-Agent 增大伪造成本
 app.use('*', async (c, next) => {
   const path = c.req.path;
-  const ip = c.req.header('x-forwarded-for') || 'unknown';
-  const key = `${ip}:${path}`;
+  const xff = c.req.header('x-forwarded-for') || '';
+  const ip = xff.split(',')[0].trim() || 'unknown';
+  const ua = c.req.header('user-agent') || '';
+  const key = `${ip}:${path}:${ua.substring(0, 50)}`;
 
   // 登录接口：5次/分钟
   if (path === '/api/auth/login') {
@@ -107,9 +120,6 @@ app.use('*', async (c, next) => {
 
   await next();
 });
-
-// 安全响应头
-app.use('*', secureHeaders());
 
 // Health check
 app.get('/', (c) => {
@@ -210,11 +220,6 @@ app.use('/api/auto-check/*', authMiddleware);
 app.use('/api/sync/*', authMiddleware);
 app.use('/api/resumes/*', authMiddleware);
 app.use('/api/form-templates/*', authMiddleware);
-
-// Worker 回调路由：在通用 tracking 中间件之前挂载，使用 service token 鉴权
-// Worker 通过 POST /api/tracking/:id/runs 回报检查结果
-import { createWorkerCallbackRoute } from './routes/tracking.js';
-app.post('/api/tracking/:id/runs', authOrServiceMiddleware, createWorkerCallbackRoute());
 
 app.route('/api/applications', applicationRoutes);
 app.route('/api/events', eventRoutes);

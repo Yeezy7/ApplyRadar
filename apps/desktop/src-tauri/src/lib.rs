@@ -63,8 +63,11 @@ pub fn run() {
 
             // Initialize database
             let pool = tauri::async_runtime::block_on(async {
-                db::init_database(&handle).await.expect("Failed to initialize database")
-            });
+                db::init_database(&handle).await
+            }).map_err(|e| {
+                eprintln!("Failed to initialize database: {}", e);
+                Box::<dyn std::error::Error>::from(e)
+            })?;
             app.manage(AppState { db: pool.clone() });
 
             // Build tray menu
@@ -76,8 +79,11 @@ pub fn run() {
                 .build()?;
 
             // Create tray icon
+            let icon = app.default_window_icon()
+                .ok_or("Window icon not found")?
+                .clone();
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .tooltip("ApplyRadar · 投递雷达")
                 .menu(&menu)
                 .on_menu_event(move |app, event| {

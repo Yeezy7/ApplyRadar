@@ -228,6 +228,14 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_resume_attachments_resume ON resume_attachments(resume_id);
     CREATE INDEX IF NOT EXISTS idx_form_templates_user ON form_templates(user_id);
     CREATE INDEX IF NOT EXISTS idx_form_templates_domain ON form_templates(user_id, domain);
+
+    -- 限流表（替代内存 Map，支持多实例/重启持久化）
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL DEFAULT 1,
+      reset_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_rate_limits_reset ON rate_limits(reset_at);
   `);
 
   console.log('Database initialized');

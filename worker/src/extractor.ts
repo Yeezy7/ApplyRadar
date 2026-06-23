@@ -48,19 +48,30 @@ export async function getPageTitle(page: Page): Promise<string> {
   }
 }
 
-export async function detectLoginState(page: Page): Promise<string> {
+// 优化：接受可选的预提取文本，避免重复调用 extractPageText
+export async function detectLoginState(page: Page, preExtractedText?: string): Promise<string> {
   try {
     const url = page.url();
-    const text = await extractPageText(page);
+    const text = preExtractedText || await extractPageText(page);
     const lowerText = text.toLowerCase();
     const lowerUrl = url.toLowerCase();
 
-    if (
-      lowerUrl.includes("login") ||
-      lowerUrl.includes("signin") ||
-      lowerUrl.includes("sign-in") ||
-      lowerUrl.includes("auth")
-    ) {
+    // 安全：URL 匹配时排除常见误报路径（OAuth 回调、登录成功页、作者页等）
+    const LOGIN_URL_EXCLUDES = [
+      '/oauth/', '/callback', '/login-success', '/login_ok', '/loginpage=false',
+      '/author/', '/authored', '/authenticated', '/auth-callback', '/auth/confirm',
+    ];
+    const isLoginUrl =
+      (lowerUrl.includes("/login") || lowerUrl.includes("/signin") || lowerUrl.includes("/sign-in")) &&
+      !LOGIN_URL_EXCLUDES.some(ex => lowerUrl.includes(ex));
+
+    // 安全：单独 URL 不足以判定过期，需结合密码输入框或登录关键词
+    const hasPasswordField = await page.evaluate(() =>
+      document.querySelectorAll('input[type="password"]').length > 0
+    );
+
+    // URL 看起来像登录页 + 页面有密码输入框 → 确认过期
+    if (isLoginUrl && hasPasswordField) {
       return "expired";
     }
 
@@ -97,13 +108,16 @@ export async function detectLoginState(page: Page): Promise<string> {
       return "blocked";
     }
 
-    const hasLoginForm = await page.evaluate(() => {
-      const inputs = document.querySelectorAll('input[type="password"]');
-      return inputs.length > 0;
-    });
-
-    if (hasLoginForm) {
-      return "expired";
+    // 安全：单独密码输入框不够，需结合登录关键词才判定过期
+    // （有些站点的修改密码页、注册页也有密码框但不是"过期"）
+    if (hasPasswordField) {
+      const hasLoginContext =
+        lowerText.includes("登录") || lowerText.includes("login") ||
+        lowerText.includes("sign in") || lowerText.includes("signin") ||
+        lowerText.includes("请登录") || lowerText.includes("账号登录");
+      if (hasLoginContext) {
+        return "expired";
+      }
     }
 
     // 中文登录页面检测：页面含"登录"相关文字但不含"投递"/"申请"等求职关键词

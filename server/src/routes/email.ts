@@ -3,6 +3,7 @@ import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
 import { escapeHtml } from '../validate.js';
+import { decryptSecret } from '../crypto.js';
 
 const app = new Hono<AppEnv>();
 
@@ -26,7 +27,7 @@ app.post('/test', async (c) => {
       secure: parseInt(settings.smtp_port || '465') === 465,
       auth: {
         user: settings.smtp_username,
-        pass: settings.smtp_password,
+        pass: decryptSecret(settings.smtp_password),
       },
     });
 
@@ -119,7 +120,7 @@ app.post('/daily-report', async (c) => {
       secure: parseInt(settings.smtp_port || '465') === 465,
       auth: {
         user: settings.smtp_username,
-        pass: settings.smtp_password,
+        pass: decryptSecret(settings.smtp_password),
       },
     });
 

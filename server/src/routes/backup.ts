@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { generateId } from '../auth.js';
+import { backupImportSchema } from '../validate.js';
 
 const app = new Hono<AppEnv>();
 
@@ -29,13 +30,18 @@ app.get('/export', (c) => {
 });
 
 // Import data
+// 安全：使用 zod 校验所有导入字段，防止恶意/损坏的备份注入非法数据
 app.post('/import', async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json();
+  const rawBody = await c.req.json();
 
-  if (!body.applications || !Array.isArray(body.applications)) {
-    return c.json({ code: 400, msg: '无效的备份数据' }, 400);
+  const parsed = backupImportSchema.safeParse(rawBody);
+  if (!parsed.success) {
+    const errors = parsed.error.issues.map((e: any) => `${e.path.join('.')}: ${e.message}`).join('; ');
+    return c.json({ code: 400, msg: `备份数据校验失败: ${errors}` }, 400);
   }
+
+  const body = parsed.data;
 
   const transaction = db.transaction(() => {
     let imported = {

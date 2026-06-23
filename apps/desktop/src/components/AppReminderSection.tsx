@@ -57,6 +57,7 @@ export default function AppReminderSection({ reminders, applicationId, onRefresh
       onRefresh();
     } catch (e) {
       console.error("Failed to mark reminder done:", e);
+      setError(`完成失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -68,6 +69,7 @@ export default function AppReminderSection({ reminders, applicationId, onRefresh
       onRefresh();
     } catch (e) {
       console.error("Failed to delete reminder:", e);
+      setError(`删除失败: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -83,6 +85,14 @@ export default function AppReminderSection({ reminders, applicationId, onRefresh
           添加提醒
         </button>
       </div>
+
+      {/* 全局错误提示（操作失败时显示） */}
+      {error && !showForm && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-auto text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
 
       {showForm && (
         <div className="mb-4 rounded-xl border border-stone-200 bg-stone-50/60 p-4">

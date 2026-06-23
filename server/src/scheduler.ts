@@ -3,6 +3,7 @@ import db from './db.js';
 import { generateId } from './auth.js';
 import { escapeHtml } from './validate.js';
 import { addBatchCheckJobs } from './queue.js';
+import { decryptSecret } from './crypto.js';
 
 // Worker service token（server ↔ worker 内部通信）
 const WORKER_SERVICE_TOKEN = process.env.WORKER_SERVICE_TOKEN || '';
@@ -74,11 +75,17 @@ async function runAutoCheckForUser(userId: string) {
 
   if (targets.length === 0) return { total: 0, success: 0, failed: 0, queued: 0 };
 
+  // 安全：解密 session_cookies 后再传给 worker
+  const decryptedTargets = targets.map(t => ({
+    ...t,
+    session_cookies: t.session_cookies ? decryptSecret(t.session_cookies) : null,
+  }));
+
   // 使用 worker service token 而非用户 JWT
   const token = WORKER_SERVICE_TOKEN;
 
   // 尝试通过队列分发
-  const queued = await addBatchCheckJobs(targets, token);
+  const queued = await addBatchCheckJobs(decryptedTargets, token);
 
   if (queued > 0) {
     return { total: targets.length, success: 0, failed: 0, queued };
@@ -174,7 +181,7 @@ async function sendEmailReport(userId: string) {
       secure: parseInt(settings.smtp_port || '465') === 465,
       auth: {
         user: settings.smtp_username,
-        pass: settings.smtp_password,
+        pass: decryptSecret(settings.smtp_password),
       },
     });
 
@@ -215,15 +222,15 @@ async function sendReminderEmail(reminder: any, userEmail: string) {
       secure: parseInt(settings.smtp_port || '465') === 465,
       auth: {
         user: settings.smtp_username,
-        pass: settings.smtp_password,
+        pass: decryptSecret(settings.smtp_password),
       },
     });
 
     const html = `
       <h2>ApplyRadar 提醒</h2>
       <div style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
-        <h3 style="margin: 0 0 10px 0;">${reminder.title}</h3>
-        ${reminder.content ? `<p style="margin: 0; color: #666;">${reminder.content}</p>` : ''}
+        <h3 style="margin: 0 0 10px 0;">${escapeHtml(reminder.title)}</h3>
+        ${reminder.content ? `<p style="margin: 0; color: #666;">${escapeHtml(reminder.content)}</p>` : ''}
         <p style="margin: 10px 0 0 0; color: #999; font-size: 12px;">
           提醒时间: ${new Date(reminder.remind_at).toLocaleString('zh-CN')}
         </p>

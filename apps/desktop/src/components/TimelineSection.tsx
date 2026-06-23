@@ -22,14 +22,17 @@ function getEventDotColor(event: ApplicationEvent) {
 
 export default function TimelineSection({ events, currentStatus }: Props) {
   const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
 
   const handleResolve = async (eventId: string, action: "accepted" | "dismissed") => {
     setResolvingIds((prev) => new Set(prev).add(eventId));
+    setError("");
     try {
       await eventService.resolveApplicationEvent(eventId, action);
       // The parent should refresh events
     } catch (e) {
       console.error("Failed to resolve event:", e);
+      setError(`操作失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setResolvingIds((prev) => {
         const next = new Set(prev);
@@ -42,6 +45,12 @@ export default function TimelineSection({ events, currentStatus }: Props) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-6 mb-5">
       <h2 className="text-sm font-semibold text-gray-700 mb-4">状态时间线</h2>
+      {error && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+          <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-auto text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
       {events.length === 0 ? (
         <p className="text-sm text-gray-400 py-4">暂无事件记录</p>
       ) : (

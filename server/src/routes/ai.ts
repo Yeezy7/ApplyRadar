@@ -3,6 +3,7 @@ import type { AppEnv } from '../types.js';
 import db from '../db.js';
 import { z } from 'zod';
 import { isPrivateUrl, validateBody } from '../validate.js';
+import { decryptSecret } from '../crypto.js';
 
 const parseJdSchema = z.object({
   text: z.string().min(1).max(10000),
@@ -17,7 +18,7 @@ app.post('/test-connection', async (c) => {
   // Get user settings
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
 
-  if (!settings || !settings.api_key) {
+  if (!settings || !decryptSecret(settings.api_key)) {
     return c.json({ code: 400, msg: '请先配置 API Key' }, 400);
   }
 
@@ -34,7 +35,7 @@ app.post('/test-connection', async (c) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.api_key}`,
+        'Authorization': `Bearer ${decryptSecret(settings.api_key)}`,
       },
       body: JSON.stringify({
         model,
@@ -72,7 +73,7 @@ app.post('/parse-jd', validateBody(parseJdSchema), async (c) => {
 
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId) as any;
 
-  if (!settings || !settings.api_key) {
+  if (!settings || !decryptSecret(settings.api_key)) {
     return c.json({ code: 400, msg: '请先配置 API Key' }, 400);
   }
 
@@ -101,7 +102,7 @@ ${body.text}`;
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${settings.api_key}`,
+        'Authorization': `Bearer ${decryptSecret(settings.api_key)}`,
       },
       body: JSON.stringify({
         model,

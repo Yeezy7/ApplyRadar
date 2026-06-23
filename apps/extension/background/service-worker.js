@@ -155,41 +155,54 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 // 消息处理（来自 popup 或 content script）
+// 安全：统一使用 async IIFE 模式，防止 service worker 在 sendResponse 前被回收
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SYNC_COOKIES') {
-    syncCookiesForDomain(message.domain).then(() => {
-      sendResponse({ success: true });
-    }).catch(e => {
-      sendResponse({ success: false, error: e.message });
-    });
-    return true; // 异步响应
+    (async () => {
+      try {
+        await syncCookiesForDomain(message.domain);
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
+    return true;
   }
 
   if (message.type === 'SYNC_ALL') {
-    syncAllCookies().then(() => {
-      sendResponse({ success: true });
-    }).catch(e => {
-      sendResponse({ success: false, error: e.message });
-    });
+    (async () => {
+      try {
+        await syncAllCookies();
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
     return true;
   }
 
   if (message.type === 'ADD_DOMAIN') {
-    addSyncedDomain(message.domain).then(() => {
-      syncCookiesForDomain(message.domain);
-      sendResponse({ success: true });
-    }).catch(e => {
-      sendResponse({ success: false, error: e.message });
-    });
+    (async () => {
+      try {
+        await addSyncedDomain(message.domain);
+        await syncCookiesForDomain(message.domain);
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
     return true;
   }
 
   if (message.type === 'CHECK_SESSIONS') {
-    checkSessionHealth().then(() => {
-      sendResponse({ success: true });
-    }).catch(e => {
-      sendResponse({ success: false, error: e.message });
-    });
+    (async () => {
+      try {
+        await checkSessionHealth();
+        sendResponse({ success: true });
+      } catch (e) {
+        sendResponse({ success: false, error: e.message });
+      }
+    })();
     return true;
   }
 
