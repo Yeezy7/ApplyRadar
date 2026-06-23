@@ -55,29 +55,6 @@ async function syncCookiesForDomain(domain) {
   }
 }
 
-    await setLastSyncTime(domain, Date.now());
-
-    // 同步后自动触发检查
-    for (const target of targets) {
-      try {
-        const serverUrl = await getServerUrl();
-        const token = await getToken();
-        await fetch(`${serverUrl}/api/auto-check/check/${target.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-      } catch {}
-    }
-
-    console.log(`[ApplyRadar] Synced ${cookies.length} cookies for ${domain}`);
-  } catch (e) {
-    console.error(`[ApplyRadar] Failed to sync cookies for ${domain}:`, e);
-  }
-}
-
 async function syncAllCookies() {
   const domains = await getSyncedDomains();
   for (const domain of domains) {

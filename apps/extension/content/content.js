@@ -77,20 +77,29 @@
     };
   }
 
-  // ========== 表单识别 ==========
+  // ========== 表单识别（委托给 form-detector.js / form-filler.js）==========
+  // 实际实现见独立模块，通过 window.ApplyRadarForms 暴露：
+  //   - detectFormFields()     扫描页面，返回识别到的字段列表
+  //   - fillDetectedFields()   用简历数据填充识别到的字段
+  //   - identifyField(element) 识别单个元素
+  // content.js 此处仅保留薄封装，便于在模块未加载时优雅降级。
 
-  const FIELD_MAP = {
-    full_name: { patterns: ['name', '姓名', '名字'], label: '姓名' },
-    phone: { patterns: ['phone', 'mobile', '手机', '电话'], label: '手机' },
-    email: { patterns: ['email', '邮箱', '邮件'], label: '邮箱' },
-    gender: { patterns: ['gender', 'sex', '性别'], label: '性别' },
-    birth_date: { patterns: ['birth', 'birthday', '出生', '年龄'], label: '出生日期' },
-    education: { patterns: ['education', 'degree', '学历'], label: '学历' },
-    school: { patterns: ['school', 'university', '学校', '院校'], label: '学校' },
-    major: { patterns: ['major', '专业'], label: '专业' },
-    work_company: { patterns: ['company', 'employer', '公司', '单位'], label: '公司' },
-    work_title: { patterns: ['title', 'position', '职位', '岗位'], label: '职位' },
-  };
+  const Forms = window.ApplyRadarForms;
+
+  function detectFormFieldsSafe() {
+    if (Forms && typeof Forms.detectFormFields === 'function') {
+      return Forms.detectFormFields();
+    }
+    console.warn('[ApplyRadar] form-detector.js 未加载，表单识别不可用');
+    return [];
+  }
+
+  function identifyFieldSafe(element) {
+    if (Forms && typeof Forms.identifyField === 'function') {
+      return Forms.identifyField(element);
+    }
+    return null;
+  }
 
   function getLabelFor(element) {
     if (element.id) {
@@ -104,61 +113,6 @@
       return prev.textContent.trim();
     }
     return '';
-  }
-
-  function identifyField(element) {
-    const allAttrs = `${element.name || ''} ${element.id || ''} ${element.placeholder || ''} ${getLabelFor(element)}`.toLowerCase();
-    for (const [fieldName, config] of Object.entries(FIELD_MAP)) {
-      if (config.patterns.some(p => allAttrs.includes(p))) {
-        return { fieldName, label: config.label };
-      }
-    }
-    return null;
-  }
-
-  function getResumeValue(data, fieldName) {
-    if (data[fieldName]) return String(data[fieldName]);
-    if (fieldName === 'school' && data.education?.length > 0) return data.education[0].school;
-    if (fieldName === 'major' && data.education?.length > 0) return data.education[0].major;
-    if (fieldName === 'education' && data.education?.length > 0) return data.education[0].degree;
-    if (fieldName === 'work_company' && data.work_experience?.length > 0) return data.work_experience[0].company;
-    if (fieldName === 'work_title' && data.work_experience?.length > 0) return data.work_experience[0].title;
-    return null;
-  }
-
-  function fillElement(element, value) {
-    const tagName = element.tagName.toLowerCase();
-    const type = (element.type || 'text').toLowerCase();
-    const nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    const nativeTextAreaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-
-    if (tagName === 'select') {
-      const opt = Array.from(element.options).find(o =>
-        o.value === value || o.textContent.trim() === value ||
-        o.value.toLowerCase().includes(value.toLowerCase()) ||
-        o.textContent.toLowerCase().includes(value.toLowerCase())
-      );
-      if (opt) element.value = opt.value;
-    } else if (tagName === 'textarea') {
-      nativeTextAreaSetter ? nativeTextAreaSetter.call(element, value) : element.value = value;
-    } else if (type === 'radio') {
-      const label = element.parentElement?.textContent?.toLowerCase() || '';
-      if (element.value.toLowerCase() === value.toLowerCase() || label.includes(value.toLowerCase())) {
-        element.checked = true;
-      }
-    } else {
-      nativeInputSetter ? nativeInputSetter.call(element, value) : element.value = value;
-    }
-
-    ['input', 'change', 'blur'].forEach(evt =>
-      element.dispatchEvent(new Event(evt, { bubbles: true, cancelable: true }))
-    );
-
-    // React 支持
-    const reactProps = Object.keys(element).find(k => k.startsWith('__reactProps$'));
-    if (reactProps && element[reactProps]?.onChange) {
-      element[reactProps].onChange({ target: element });
-    }
   }
 
   // ========== 抽屉 UI ==========
@@ -376,20 +330,26 @@
       });
 
       document.getElementById('ar-fill-go')?.addEventListener('click', () => {
+        const Forms = window.ApplyRadarForms;
         let count = 0;
+
+        // 一次扫描页面，建立 fieldName → element 映射，避免重复遍历 DOM
+        const fieldMap = new Map();
+        if (Forms && typeof Forms.detectFormFields === 'function') {
+          for (const f of Forms.detectFormFields()) {
+            if (!fieldMap.has(f.fieldName)) fieldMap.set(f.fieldName, f.element);
+          }
+        }
+
         body.querySelectorAll('.ar-fill-cb:checked').forEach(cb => {
           const val = cb.dataset.value;
           const field = cb.dataset.field;
           if (!val) return;
 
-          // 直接在页面上找匹配的 input 填入
-          for (const input of document.querySelectorAll('input, select, textarea')) {
-            const info = identifyField(input);
-            if (info && info.fieldName === field) {
-              fillElement(input, val);
-              count++;
-              break;
-            }
+          const el = fieldMap.get(field);
+          if (el && Forms && typeof Forms.fillElement === 'function') {
+            Forms.fillElement(el, val);
+            count++;
           }
         });
         const goBtn = document.getElementById('ar-fill-go');
@@ -406,10 +366,21 @@
 
   function setupDrag() {
     const tab = drawer.querySelector('.ar-drawer-tab');
+    const panel = drawer.querySelector('.ar-drawer-panel');
     let dragging = false;
     let moved = false;
     let startY = 0;
     let startTop = 0;
+
+    // 恢复上次位置
+    chrome.storage.local.get('ar_tab_top', (result) => {
+      if (result.ar_tab_top != null) {
+        const top = result.ar_tab_top;
+        tab.style.top = top + 'px';
+        panel.style.top = top + 'px';
+        panel.style.transform = 'none';
+      }
+    });
 
     tab.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
@@ -427,16 +398,13 @@
       if (!moved) return;
 
       const tabH = tab.offsetHeight;
-      const minY = 40;
-      const maxY = window.innerHeight - tabH - 20;
+      const minY = 10;
+      const maxY = window.innerHeight - tabH - 10;
       const newTop = Math.min(maxY, Math.max(minY, startTop + dy));
-      tab.style.position = 'fixed';
       tab.style.top = newTop + 'px';
       tab.style.right = '0';
       tab.style.transform = 'none';
 
-      // 同步面板位置
-      const panel = drawer.querySelector('.ar-drawer-panel');
       panel.style.top = newTop + 'px';
       panel.style.transform = 'none';
     });
@@ -448,20 +416,20 @@
         toggleDrawer();
         return;
       }
-      // 吸附到当前位置的右侧边缘
-      const tabEl = drawer.querySelector('.ar-drawer-tab');
-      const panel = drawer.querySelector('.ar-drawer-panel');
-      const rect = tabEl.getBoundingClientRect();
+      const rect = tab.getBoundingClientRect();
       const tabH = rect.height;
       const minY = 10;
       const maxY = window.innerHeight - tabH - 10;
       const clampedTop = Math.min(maxY, Math.max(minY, rect.top));
 
-      tabEl.style.top = clampedTop + 'px';
-      tabEl.style.bottom = 'auto';
+      tab.style.top = clampedTop + 'px';
+      tab.style.bottom = 'auto';
       panel.style.top = clampedTop + 'px';
       panel.style.bottom = 'auto';
       panel.style.transform = 'none';
+
+      // 保存位置
+      chrome.storage.local.set({ ar_tab_top: clampedTop });
     });
   }
 

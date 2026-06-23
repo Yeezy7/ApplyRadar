@@ -15,4 +15,10 @@ profiles/
 .DS_Store
 .vscode/
 
+# Secrets & local config — never commit
+.env
+.env.*
+!.env.example
+
+# Local server data
 server/data/

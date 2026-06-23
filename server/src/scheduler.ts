@@ -1,8 +1,11 @@
 import cron from 'node-cron';
 import db from './db.js';
-import { generateId, generateToken } from './auth.js';
+import { generateId } from './auth.js';
 import { escapeHtml } from './validate.js';
 import { addBatchCheckJobs } from './queue.js';
+
+// Worker service token（server ↔ worker 内部通信）
+const WORKER_SERVICE_TOKEN = process.env.WORKER_SERVICE_TOKEN || '';
 
 // 定时任务状态
 const taskStatus = {
@@ -71,8 +74,8 @@ async function runAutoCheckForUser(userId: string) {
 
   if (targets.length === 0) return { total: 0, success: 0, failed: 0, queued: 0 };
 
-  // 生成用户 token 供 worker 回调认证
-  const token = generateToken(userId);
+  // 使用 worker service token 而非用户 JWT
+  const token = WORKER_SERVICE_TOKEN;
 
   // 尝试通过队列分发
   const queued = await addBatchCheckJobs(targets, token);

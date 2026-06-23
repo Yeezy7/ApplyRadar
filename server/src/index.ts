@@ -6,7 +6,7 @@ import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { serve } from '@hono/node-server';
 import { initDatabase } from './db.js';
-import { authMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
+import { authMiddleware, authOrServiceMiddleware, registerUser, loginUser, wechatLogin, generateToken } from './auth.js';
 import { initScheduler, getSchedulerStatus, triggerAutoCheck, triggerEmailReport } from './scheduler.js';
 import { validateBody, loginSchema, registerSchema } from './validate.js';
 import applicationRoutes from './routes/application.js';
@@ -14,7 +14,7 @@ import eventRoutes from './routes/event.js';
 import reminderRoutes from './routes/reminder.js';
 import settingsRoutes from './routes/settings.js';
 import statsRoutes from './routes/stats.js';
-import trackingRoutes from './routes/tracking.js';
+import trackingRoutes, { createWorkerCallbackRoute } from './routes/tracking.js';
 import pushLogRoutes from './routes/pushLog.js';
 import aiRoutes from './routes/ai.js';
 import backupRoutes from './routes/backup.js';
@@ -196,6 +196,11 @@ app.use('/api/events/*', authMiddleware);
 app.use('/api/reminders/*', authMiddleware);
 app.use('/api/settings/*', authMiddleware);
 app.use('/api/stats/*', authMiddleware);
+
+// Worker 回调路由：必须在 tracking 通用 middleware 之前注册，
+// 否则 authMiddleware 会先拦截（不支持 service token）
+app.post('/api/tracking/:id/runs', authOrServiceMiddleware, createWorkerCallbackRoute());
+
 app.use('/api/tracking/*', authMiddleware);
 app.use('/api/push-logs/*', authMiddleware);
 app.use('/api/ai/*', authMiddleware);
@@ -205,6 +210,11 @@ app.use('/api/auto-check/*', authMiddleware);
 app.use('/api/sync/*', authMiddleware);
 app.use('/api/resumes/*', authMiddleware);
 app.use('/api/form-templates/*', authMiddleware);
+
+// Worker 回调路由：在通用 tracking 中间件之前挂载，使用 service token 鉴权
+// Worker 通过 POST /api/tracking/:id/runs 回报检查结果
+import { createWorkerCallbackRoute } from './routes/tracking.js';
+app.post('/api/tracking/:id/runs', authOrServiceMiddleware, createWorkerCallbackRoute());
 
 app.route('/api/applications', applicationRoutes);
 app.route('/api/events', eventRoutes);

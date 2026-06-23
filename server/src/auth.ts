@@ -35,14 +35,31 @@ export function generateId(): string {
   return randomUUID();
 }
 
-// Auth middleware - extracts userId from token
-export async function authMiddleware(c: Context, next: Next) {
+// Worker 内部通信密钥（可选，用于 server ↔ worker 回调鉴权）
+const WORKER_SERVICE_TOKEN = process.env.WORKER_SERVICE_TOKEN;
+
+export function verifyServiceToken(token: string): boolean {
+  if (!WORKER_SERVICE_TOKEN) return false;
+  return token === WORKER_SERVICE_TOKEN;
+}
+
+// Auth middleware - accepts either user JWT or worker service token
+export async function authOrServiceMiddleware(c: Context, next: Next) {
   const authHeader = c.req.header('Authorization');
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return c.json({ code: 401, msg: '未登录' }, 401);
   }
 
   const token = authHeader.slice(7);
+
+  // 先尝试 worker service token
+  if (WORKER_SERVICE_TOKEN && token === WORKER_SERVICE_TOKEN) {
+    c.set('userId', '__worker__');
+    await next();
+    return;
+  }
+
+  // 再尝试用户 JWT
   const payload = verifyToken(token);
   if (!payload) {
     return c.json({ code: 401, msg: '登录已过期' }, 401);

@@ -5,6 +5,7 @@ import { checkTarget, type CheckTarget, type CheckResult } from "./checker.js";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
+const WORKER_SERVICE_TOKEN = process.env.WORKER_SERVICE_TOKEN || "";
 const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "5", 10);
 const RATE_LIMIT = parseInt(process.env.WORKER_RATE_LIMIT || "30", 10);
 
@@ -13,6 +14,7 @@ const ts = () => new Date().toISOString();
 console.log(`[${ts()}] [worker] Starting ApplyRadar Worker...`);
 console.log(`[${ts()}] [worker] Redis: ${REDIS_URL}`);
 console.log(`[${ts()}] [worker] Server: ${SERVER_URL}`);
+console.log(`[${ts()}] [worker] Service token: ${WORKER_SERVICE_TOKEN ? "configured" : "NOT configured"}`);
 console.log(`[${ts()}] [worker] Concurrency: ${CONCURRENCY}`);
 
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
@@ -34,13 +36,13 @@ const worker = new Worker(
       hasError: !!result.errorMessage,
     });
 
-    // Report result back to server
+    // Report result back to server using service token
     try {
       const response = await fetch(`${SERVER_URL}/api/tracking/${target.id}/runs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${job.data.token}`,
+          Authorization: `Bearer ${WORKER_SERVICE_TOKEN}`,
         },
         body: JSON.stringify({
           status: result.success ? "success" : "failed",

@@ -4,6 +4,9 @@ import db from '../db.js';
 import { generateId } from '../auth.js';
 import { addCheckJob, addBatchCheckJobs } from '../queue.js';
 
+// Worker service token
+const WORKER_SERVICE_TOKEN = process.env.WORKER_SERVICE_TOKEN || '';
+
 const app = new Hono<AppEnv>();
 
 // 获取自动检查状态
@@ -62,7 +65,8 @@ app.get('/status', (c) => {
 // 手动触发自动检查（通过队列）
 app.post('/run', async (c) => {
   const userId = c.get('userId');
-  const token = c.req.header('Authorization')?.replace('Bearer ', '') || '';
+  // Worker 回调使用 service token，不再传递用户 JWT
+  const token = WORKER_SERVICE_TOKEN;
 
   // 获取所有启用的追踪目标
   const targets = db.prepare(
@@ -111,7 +115,7 @@ app.post('/run', async (c) => {
 app.post('/check/:targetId', async (c) => {
   const userId = c.get('userId');
   const targetId = c.req.param('targetId');
-  const token = c.req.header('Authorization')?.replace('Bearer ', '') || '';
+  const token = WORKER_SERVICE_TOKEN;
 
   const target = db.prepare(
     'SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?'

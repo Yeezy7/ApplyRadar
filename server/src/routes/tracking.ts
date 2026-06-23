@@ -215,42 +215,59 @@ app.get('/:id/runs', (c) => {
 
 // Create tracking run (for manual check or worker callback)
 app.post('/:id/runs', async (c) => {
-  const userId = c.get('userId');
-  const targetId = c.req.param('id');
+  return handleCreateRun(c.get('userId'), c.req.param('id'), await parseBody(c));
+});
 
-  let body: any = {};
+export default app;
+
+// ---------- Worker 回调专用路由 ----------
+// 允许 worker service token 鉴权，不强制 userId 匹配
+function parseBody(c: any) {
   try {
-    const text = await c.req.text();
-    if (text) {
-      body = JSON.parse(text);
-    }
+    const text = c.req.text ? '' : '';
+    // Hono c.req.json() can only be called once, use raw text
+    return c.req.json?.() || {};
   } catch {
-    body = {};
+    return {};
+  }
+}
+
+async function handleCreateRun(userId: string, targetId: string, body: any) {
+  const isWorker = userId === '__worker__';
+
+  // Verify target exists and belongs to user (skip for worker)
+  const target = db.prepare(
+    isWorker
+      ? 'SELECT * FROM tracking_targets WHERE id = ?'
+      : 'SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?'
+  ).get(targetId, ...(!isWorker ? [userId] : [])) as any;
+  if (!target) {
+    return new Response(JSON.stringify({ code: 404, msg: '追踪目标不存在' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 
-  // Verify target belongs to user
-  const target = db.prepare('SELECT * FROM tracking_targets WHERE id = ? AND user_id = ?').get(targetId, userId) as any;
-  if (!target) {
-    return c.json({ code: 404, msg: '追踪目标不存在' }, 404);
-  }
+  // For worker calls, use the target's actual user_id
+  const effectiveUserId = isWorker ? target.user_id : userId;
 
   const id = generateId();
   const now = new Date().toISOString();
 
   const run = {
     id,
-    user_id: userId,
+    user_id: effectiveUserId,
     target_id: targetId,
     started_at: now,
     finished_at: now,
     status: body.status || 'success',
     raw_status: body.raw_status || null,
     normalized_status: body.normalized_status || null,
-    confidence: body.confidence || 0,
+    confidence: body.confidence ?? 0,
     login_state: body.login_state || 'unknown',
     error_message: body.error_message || null,
     page_hash: body.page_hash || null,
-    ai_used: body.ai_used || 0,
+    ai_used: body.ai_used ?? 0,
     created_at: now,
   };
 
@@ -261,7 +278,7 @@ app.post('/:id/runs', async (c) => {
 
   // Update target with check results
   const updates = ["last_checked_at = ?", "updated_at = datetime('now')"];
-  const params = [now];
+  const params: any[] = [now];
 
   if (body.login_state) {
     updates.push("login_state = ?");
@@ -278,6 +295,10 @@ app.post('/:id/runs', async (c) => {
   if (body.error_message) {
     updates.push("last_error = ?");
     params.push(body.error_message);
+  } else {
+    // 成功时清除之前的错误
+    updates.push("last_error = ?");
+    params.push(null);
   }
 
   params.push(targetId);
@@ -285,7 +306,23 @@ app.post('/:id/runs', async (c) => {
     `UPDATE tracking_targets SET ${updates.join(', ')} WHERE id = ?`
   ).run(...params);
 
-  return c.json({ code: 0, data: run }, 201);
-});
+  return new Response(JSON.stringify({ code: 0, data: run }), {
+    status: 201,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
-export default app;
+// Factory: standalone handler for worker callback (bypasses Hono app context)
+export function createWorkerCallbackRoute() {
+  return async (c: any) => {
+    const targetId = c.req.param('id');
+    let body: any = {};
+    try {
+      const raw = await c.req.text();
+      if (raw) body = JSON.parse(raw);
+    } catch {
+      body = {};
+    }
+    return handleCreateRun(c.get('userId'), targetId, body);
+  };
+}
